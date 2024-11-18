@@ -1,5 +1,5 @@
 // Copyright 2024 Markus Anders
-// This file is part of satsuma 1.0.
+// This file is part of satsuma 1.1.
 // See LICENSE for extended copyright information.
 
 #ifndef SATSUMA_CNF_H
@@ -7,70 +7,122 @@
 
 #include <string>
 #include <unordered_map>
+#include "tsl/robin_set.h"
 #include "utility.h"
+#include "cnf2wl.h"
 
 class cnf {
 private:
-    // Hash function
-    struct hashFunction
-    {
-        size_t operator()(const std::vector<int>
-                          &myVector) const
-        {
-            std::hash<int> hasher;
-            size_t answer = 0;
-
-            for (int i : myVector)
-            {
-                answer ^= hasher(i) + 0x9e3779b9 +
-                          (answer << 6) + (answer >> 2);
-            }
-            return answer;
-        }
-    };
-
-    std::unordered_set<std::vector<int>, hashFunction> clause_duplicates;
+    tsl::robin_set<std::vector<int>, any_hash>                  clause_db_arbitrary;
+    tsl::robin_set<std::pair<int, int>, pair_hash>                  clause_db_size2;
+    tsl::robin_set<std::tuple<int, int, int>, triple_hash>          clause_db_size3;
     std::vector<std::pair<int, int>> clauses_pt;
     std::vector<int> clauses;
     std::vector<std::pair<int, int>> variable_to_nclauses;
-    std::vector<std::vector<int>> variable_used_list;
+    std::vector<std::vector<int>>    variable_used_list;
 
     dejavu::markset test_used;
     int number_of_variables = 0;
 
+    dejavu::markset support_test;
+    std::vector<int> need_to_test_clauses;
+    std::vector<int> test_clause;
+    std::vector<std::pair<int, int>> add_pairs;
+
 public:
+    void read_from_cnf2wl(cnf2wl& other_formula) {
+        reserve(other_formula.n_variables(), other_formula.n_clauses() - other_formula.satisfied_clauses());
+        std::vector<int> next_clause;
+        for(int i = 0; i < other_formula.n_clauses(); ++i) {
+            if(other_formula.is_satisfied(i)) continue;
+            next_clause.clear();
+            bool satisfied = false;
+            for(int j = 0; j < other_formula.clause_size(i); ++j) {
+                const int lit = other_formula.literal_at_clause_pos(i, j);
+                const int assigned = other_formula.assigned(lit);
+                satisfied = satisfied || (assigned == 1);
+                if(assigned == 0) next_clause.push_back(lit);
+            }
+            if(!satisfied) add_clause(next_clause);
+        }
+    }
+
     void reserve(int n, int m) {
         number_of_variables = n;
         clauses_pt.reserve(m);
         clauses.reserve(4*m);
         variable_used_list.resize(n);
         variable_to_nclauses.reserve(n);
+        clause_db_arbitrary.reserve(m);
+        clause_db_size2.reserve(m);
+        //clause_db_size3.reserve(2*m);
         for(int i = 0; i < n; ++i) {
             variable_to_nclauses.emplace_back(0, 0);
         }
-
     }
 
-    bool test_clause_db(std::vector<int>& clause, bool add) {
-        //std::ostringstream sstream;
-        //for(auto& l : clause) sstream << l << " " << std::endl;
-        //std::string str = sstream.str();
-        bool test = clause_duplicates.find(clause) != clause_duplicates.end();
-        if(!test && add) clause_duplicates.insert(clause);
-        return test;
+    bool write_db(std::vector<int>& clause) {
+        // we're adding the clause, we are gonna update the hash tables in any case
+        if (clause.size() == 2) {
+            return !clause_db_size2.insert({clause[0], clause[1]}).second;
+        } else if (clause.size() == 3) {
+            return !clause_db_size3.insert({clause[0], clause[1], clause[2]}).second;
+        } else {
+            return !clause_db_arbitrary.insert(clause).second;
+        }
+    }
+
+    bool read_db(std::vector<int>& clause) const {
+        // if we're not adding the clause, try to use sequential search
+        int min_v = -1;
+        int min_v_size = INT32_MAX;
+        for (const auto l: clause) {
+            const int v = abs(l) - 1;
+            const int sz = variable_used_list[v].size();
+            if (sz < min_v_size) {
+                min_v = v;
+                min_v_size = sz;
+            }
+        }
+        if (min_v != -1 && min_v_size < 128) {
+            for(auto const c : variable_used_list[min_v]) {
+                auto const [pt_start, pt_end] = clauses_pt[c];
+                if(pt_end - pt_start != static_cast<int>(clause.size())) continue;
+                int j = 0;
+                for(int i = pt_start; i < pt_end; ++i) {
+                    if(clauses[i] != clause[j]) break;
+                    ++j;
+                }
+                if(j == static_cast<int>(clause.size())) return true;
+            }
+            return false;
+        } else {
+            if(clause.size() == 2) {
+                const std::pair<int, int> check_pair = {clause[0], clause[1]};
+                return clause_db_size2.find(check_pair) != clause_db_size2.end();
+            } else if(clause.size() == 3) {
+                const std::tuple<int, int, int> check_triple = {clause[0], clause[1], clause[2]};
+                return clause_db_size3.find(check_triple) != clause_db_size3.end();
+            } else {
+                return clause_db_arbitrary.find(clause) != clause_db_arbitrary.end();
+            }
+        }
     }
 
     void add_clause(std::vector<int>& clause) {
-        clause.erase( unique( clause.begin(), clause.end() ), clause.end() );
         std::sort(clause.begin(), clause.end());
+        clause.erase( unique( clause.begin(), clause.end() ), clause.end() );
 
-        if(test_clause_db(clause, true)) return;
+        if(write_db(clause)) [[unlikely]] return;
 
         const int clause_number = clauses_pt.size();
         clauses_pt.emplace_back(clauses.size(), clauses.size() + clause.size());
         clauses.insert(clauses.end(), clause.begin(), clause.end());
         for(auto& l : clause) {
+            assert(l != 0);
             const int v = abs(l) - 1;
+            assert(v >= 0);
+            assert(v < number_of_variables);
             if(l > 0) {
                 variable_to_nclauses[v].first += 1;
             } else {
@@ -80,14 +132,8 @@ public:
         }
     }
 
-    dejavu::markset support_test;
-    std::vector<int> need_to_test_clauses;
-    std::vector<int> test_clause;
-    std::vector<std::pair<int, int>> add_pairs;
-
     bool complete_automorphism(int domain_size, dejavu::groups::automorphism_workspace& automorphism) {
         support_test.initialize(domain_size);
-        need_to_test_clauses.clear();
 
         assert(automorphism.nsupp() < domain_size);
         for(int i = 0; i < automorphism.nsupp(); ++i) {
@@ -164,6 +210,8 @@ public:
             }
         }
 
+        test_used.reset();
+
         for(int j = 0; j < automorphism.nsupp(); ++j) {
             const int i = automorphism.supp()[j];
             const int nv = sat_to_graph(-graph_to_sat(i));
@@ -177,6 +225,7 @@ public:
         for(auto c : need_to_test_clauses) {
             test_clause.clear();
             bool all_identity = true;
+
             for (int j = 0; j < clause_size(c); ++j) {
                 int l = literal_at_clause_pos(c, j);
                 const int graph_literal = sat_to_graph(l);
@@ -193,7 +242,12 @@ public:
 
             if(all_identity) continue;
             std::sort(test_clause.begin(), test_clause.end());
-            if(!test_clause_db(test_clause, false)) return false;
+
+            int j = 0;
+            for (; j < clause_size(c); ++j) if(test_clause[j] != literal_at_clause_pos(c, j)) break;
+            if(j == clause_size(c)) continue;
+
+            if(!read_db(test_clause)) return false;
         }
 
         return true;
@@ -235,10 +289,26 @@ public:
     void dimacs_output_clauses(std::ostream& out) {
         for(int i = 0; i < n_clauses(); ++i) {
             for (int j = 0; j < clause_size(i); ++j) {
-                int l = literal_at_clause_pos(i, j);
+                const int l = literal_at_clause_pos(i, j);
                 out << l << " ";
             }
             out << "0" << "\n";
+        }
+    }
+
+    void dimacs_output_clauses_unlocked(FILE* out) {
+        constexpr int buffer_size = 16;
+        char          buffer[buffer_size];
+
+        for(int i = 0; i < n_clauses(); ++i) {
+            for (int j = 0; j < clause_size(i); ++j) {
+                const int l = literal_at_clause_pos(i, j);
+                auto const [end_ptr, err] = std::to_chars(buffer, buffer + buffer_size, l);
+                for(char* ptr = buffer; ptr < end_ptr; ++ptr) putc_unlocked(*ptr, out);
+                putc_unlocked(' ', out);
+            }
+            putc_unlocked('0', out);
+            putc_unlocked('\n', out);
         }
     }
 };

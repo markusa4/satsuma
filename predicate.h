@@ -1,5 +1,5 @@
 // Copyright 2024 Markus Anders
-// This file is part of satsuma 1.0.
+// This file is part of satsuma 1.1.
 // See LICENSE for extended copyright information.
 
 #ifndef SATSUMA_PREDICATE_H
@@ -16,7 +16,12 @@ class predicate {
     std::vector<std::vector<int>> sbp;
     std::vector<int> global_order_prefix;
     std::vector<int> global_order;
+    std::vector<int> lit_to_order_pos;
     dejavu::markset  in_global_order;
+
+    std::vector<int> order_cache;
+    std::vector<int> order_support;
+    std::vector<int> vars_to_break_on;
 
     int extra_variables = 0;
     int variables = 0;
@@ -40,13 +45,14 @@ public:
     predicate(int nv) {
         in_global_order.initialize(2*nv);
         aw.resize(2*nv);
+        lit_to_order_pos.resize(2*nv);
+        allowed_lits.initialize(2*nv);
         variables = nv;
     }
 
     void assert_in_global_order(dejavu::groups::automorphism_workspace& automorphism) {
         for(int j = 0; j < automorphism.nsupp(); ++j) {
-            const int v = automorphism.supp()[j];
-            assert(is_ordered(v));
+            assert(is_ordered(automorphism.supp()[j]));
         }
     };
 
@@ -56,50 +62,86 @@ public:
         }
     }
 
+    std::pair<int, int> get_inverse_order(int lit) {
+        const int pos = lit_to_order_pos[lit];
+        return {pos>0?lit:(sat_to_graph(-graph_to_sat(lit))), abs(pos)};
+    }
+
     void add_to_global_order(int v, bool in_prefix = false) {
         if(!in_global_order.get(v) && !in_global_order.get(sat_to_graph(-graph_to_sat(v)))) {
             //const int pos_literal = sat_to_graph(abs(graph_to_sat(v)));
             const int pos_literal = v;
             if(in_prefix) global_order_prefix.push_back(pos_literal);
-            else global_order.push_back(pos_literal);
+            else {
+                global_order.push_back(pos_literal);
+                order_cache.push_back(pos_literal);
+                lit_to_order_pos[pos_literal]                               =   order_cache.size();
+                lit_to_order_pos[sat_to_graph(-graph_to_sat(pos_literal))]  = -(order_cache.size());
+            }
             in_global_order.set(pos_literal);
         }
     }
 
+    dejavu::markset allowed_lits;
+
     /**
-     * NOTE: This method is a mildly altered version of a similar method in BreakID.
-     *
-     * @param automorphism
-     * @param order
-     * @param extra_constraint_limt
-     * @return
-     */
+ * NOTE: This method is a mildly altered version of a similar method in BreakID.
+ *
+ * @param automorphism
+ * @param order
+ * @param extra_constraint_limt
+ * @return
+ */
     std::vector<int> determine_break_order(dejavu::groups::automorphism_workspace& automorphism,
-                                            std::vector<int>& order, int extra_constraint_limt = INT32_MAX) {
-        std::unordered_set<int> allowedLits; // which are not the last lit in their cycle, unless they map to their negation
+                                               std::vector<int>& order, std::vector<int>& result,
+                                               int extra_constraint_limt = INT32_MAX) {
+        allowed_lits.reset();
         for (int i = order.size(); i > 0; --i) {
-            int lit = order.at(i - 1);
-            if (allowedLits.count(graph_to_sat(lit)) == 0) {
+            int lit = order[i-1];
+            if (!allowed_lits.get(lit)) {
                 int sym = automorphism.p()[lit];
 
                 while (sym != lit) { // add the other lits of the cycle and the negated cycle
-                    allowedLits.insert(graph_to_sat(sym));
-                    allowedLits.insert(-graph_to_sat(sym));
+                    allowed_lits.set(sym);
+                    allowed_lits.set(graph_negate(sym));
                     sym = automorphism.p()[sym];
                 }
             }
         }
 
-        std::vector<int> result;
-        result.reserve(order.size());
+        result.clear();
+        result.reserve(std::min((int) order.size(), extra_constraint_limt));
         for (auto l: order) {
             int sym = automorphism.p()[l];
-
-            if (l != sym && allowedLits.count(graph_to_sat(l)) > 0) { result.push_back(graph_to_sat(l)); }
+            if (l != sym && allowed_lits.get(l)) { result.push_back(graph_to_sat(l)); }
             if (graph_to_sat(sym) == -graph_to_sat(l)) { break; }
             if(static_cast<int>(result.size()) >= extra_constraint_limt){ break; }
         }
+
         return result;
+    }
+
+    void order_from_support(dejavu::groups::automorphism_workspace& automorphism, std::vector<int>& order) {
+        std::vector<std::pair<int, int>> order_support;
+        allowed_lits.reset();
+        order_support.reserve(automorphism.nsupp());
+        for(int i = 0; i < automorphism.nsupp(); ++i) {
+            const int lit = automorphism.supp()[i];
+            if(!allowed_lits.get(lit)) {
+                order_support.emplace_back(get_inverse_order(lit));
+                allowed_lits.set(lit);
+                allowed_lits.set(graph_negate(lit));
+            }
+        }
+
+        std::sort(order_support.begin(), order_support.end(), [](auto &left, auto &right) {
+            return left.second < right.second;
+        });
+
+        order.clear();
+        for (auto const [l, ord]: order_support) {
+            order.push_back(l);
+        }
     }
 
     std::vector<int>& get_global_order() {
@@ -110,8 +152,6 @@ public:
         return (in_global_order.get(v) || in_global_order.get(sat_to_graph(-graph_to_sat(v))));
     }
 
-    std::vector<int> order_cache;
-
     /**
      * NOTE: This method is a mildly altered version of a similar method in BreakID.
      *
@@ -120,10 +160,17 @@ public:
      * @param automorphism
      * @param order suggested order to extend the global order (conflicting orders are ignored)
      */
-    void add_lex_leader_predicate(dejavu::groups::automorphism_workspace& automorphism, std::vector<int>& order,
-                                  int suggest_depth = 50) {
+    void add_lex_leader_predicate([[maybe_unused]] cnf& formula, dejavu::groups::automorphism_workspace& automorphism,
+                                  std::vector<int>& order, int suggest_depth = 50) {
         add_to_global_order(order);
         assert_in_global_order(automorphism);
+
+        assert(formula.is_automorphism(2*formula.n_variables(), automorphism));
+
+        //if(!formula.is_automorphism(2*formula.n_variables(), automorphism)){
+        //    std::clog << "c ****WARNING skipping uncertified generator" << std::endl;
+        //    return;
+        //}
 
         int extra_constraints = 0;
         int prev_lit = 0;
@@ -134,11 +181,30 @@ public:
             order_cache.reserve(global_order.size() + global_order_prefix.size());
             order_cache = global_order_prefix;
             order_cache.insert(order_cache.end(), global_order.begin(), global_order.end());
+
+            // update inverse order
+            int global_pos = 1;
+            for(int i = 0; i < static_cast<int>(global_order_prefix.size()); ++i) {
+                const int lit = global_order_prefix[i];
+                lit_to_order_pos[lit]               =  global_pos;
+                lit_to_order_pos[graph_negate(lit)] = -global_pos;
+                ++global_pos;
+            }
+            for(int i = 0; i < static_cast<int>(global_order.size()); ++i) {
+                const int lit = global_order[i];
+                lit_to_order_pos[lit]               =  global_pos;
+                lit_to_order_pos[graph_negate(lit)] = -global_pos;
+                ++global_pos;
+            }
         }
 
-        std::vector<int> varsToBreakOn = determine_break_order(automorphism, order_cache, suggest_depth);
+        // reduce order to the only those literals, which occur in the support of the automorphism
+        order_from_support(automorphism, order_support);
 
-        for (auto l: varsToBreakOn) {
+        // then determine the break order
+        determine_break_order(automorphism, order_support, vars_to_break_on, suggest_depth);
+
+        for (auto l: vars_to_break_on) {
             int sym = graph_to_sat(automorphism.p()[sat_to_graph(l)]);
             int tst = 0;
             if (extra_constraints == 0) {
@@ -198,6 +264,22 @@ public:
                 out << l << " ";
             }
             out << "0" << "\n";
+        }
+    }
+
+    void dimacs_output_clauses(FILE* out) {
+        constexpr int buffer_size = 16;
+        char          buffer[buffer_size];
+
+        for(const auto& c : sbp) {
+            for(const int l : c) {
+                auto const [end_ptr, err] = std::to_chars(buffer, buffer + buffer_size, l);
+                if(err == std::errc::value_too_large) terminate_with_error("buffer too small");
+                for(char* ptr = buffer; ptr < end_ptr; ++ptr) putc_unlocked(*ptr, out);
+                putc_unlocked(' ', out);
+            }
+            putc_unlocked('0', out);
+            putc_unlocked('\n', out);
         }
     }
 };
