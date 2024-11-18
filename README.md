@@ -23,7 +23,8 @@ This will pass `hole010.cnf` to satsuma, which will attempt to break symmetries,
 The formula `hole010.cnf` is satisfiable, if and only if `hole010.break.cnf` is satisfiable.
 We can then pass `hole010.break.cnf` to a SAT solver of choice, in the case above to cryptominisat.
 
-There are some options available to influence the symmetry breaking constraints generated. You may see them by using `satsuma -h`.
+There are more options available to influence the generation of symmetry breaking constraints. 
+You may see a description with `satsuma -h`.
 
 ## Bugs & Feedback
 If you encounter any bugs or have any feedback to share, please feel free to reach out to me at\
@@ -42,7 +43,7 @@ by Markus Anders, Mate Soos, Pascal Schweitzer
 by Markus Anders
 
 ## Related Software
-The tool is built on the practical graph isomorphism solver [dejavu](www.automorphisms.org). 
+The tool is built on top of the practical graph isomorphism solver [dejavu](https://www.automorphisms.org). 
 Many of the implemented procedures are descended from the symmetry breaking tool [BreakID](https://bitbucket.org/krr/breakid/).
 
 

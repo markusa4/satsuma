@@ -10,11 +10,9 @@
 #include <charconv>
 
 void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered_file) {
-    //std::ifstream infile_stream;
-    //if(entered_file) infile_stream.open(filename);
-    //std::istream& input = entered_file? infile_stream : std::cin;
-
-    FILE* const file = fopen(filename.c_str(), "r");
+    FILE* file = nullptr;
+    if(entered_file) file = fopen(filename.c_str(), "r");
+    else file = stdin;
     if(!file) terminate_with_error("could not open file '" + filename + "'");
 
     constexpr int line_buf_sz = 1024*8;
@@ -151,7 +149,7 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
 
     funlockfile(file);
     if(!reserved) terminate_with_error("file did not contain an instance");
-    std::clog << "\nc\t read " << ftell(file)/1000000.0 << "MB ";
+    std::clog << "\nc\t read " << (entered_file?ftell(file)/1000000.0:0.0) << "MB ";
     fclose(file);
 }
 
