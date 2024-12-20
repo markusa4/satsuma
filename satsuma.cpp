@@ -1,5 +1,5 @@
 // Copyright 2024 Markus Anders
-// This file is part of satsuma 1.0.
+// This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
 #include "satsuma.h"
@@ -242,7 +242,7 @@ int commandline_mode(int argc, char **argv) {
     if(use_profiling) satsuma_preprocessor.set_profiler(&my_profiler);
 
     // proof logging
-    /*std::ofstream proof_file;
+    std::ofstream proof_file;
     proof_veripb my_proof(proof_file);
     if(use_proof_logging) {
         try {
@@ -250,9 +250,8 @@ int commandline_mode(int argc, char **argv) {
         } catch (...) {
             terminate_with_error("could not open proof file '" + proof_filename + "'");
         }
-        if(print) std::clog << "c output proof to '" << proof_filename << "'\n";
         satsuma_preprocessor.set_proof(&my_proof);
-    }*/
+    }
 
     // parsing
     if(print) std::clog << "c parse '" << filename << "'";
@@ -265,6 +264,8 @@ int commandline_mode(int argc, char **argv) {
     if(print) std::clog << " (" << sw.stop() << "ms)" << std::endl;
     std::clog << "c\t [cnf: #variables " << formula.n_variables() << " #clauses " << formula.n_clauses() << " #arr "
                      << formula.n_len() <<  "]"<< std::endl;
+
+    if(use_proof_logging && print) std::clog << "c output proof to '" << proof_filename << "'\n";
 
     // call main algorithm
     if(entered_out_file) satsuma_preprocessor.output_file(out_filename);

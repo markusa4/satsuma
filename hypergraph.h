@@ -1,5 +1,5 @@
 // Copyright 2024 Markus Anders
-// This file is part of satsuma 1.1.
+// This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
 #ifndef SATSUMA_HYPERGRAPH_H

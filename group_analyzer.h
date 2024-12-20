@@ -1,5 +1,5 @@
 // Copyright 2024 Markus Anders
-// This file is part of satsuma 1.1.
+// This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
 #include "cnf.h"
@@ -421,7 +421,7 @@ public:
 
                 if(!formula.complete_automorphism(domain_size, aw)) break;
                 assert(formula.is_automorphism(domain_size, aw));
-                sbp.add_lex_leader_predicate(formula, aw, orbit);
+                sbp.add_lex_leader_predicate(aw, orbit);
             }
 
             // mark the orbit, and negation orbit, as handled (will not be touched again)
@@ -819,7 +819,7 @@ public:
                     if(!potential_johnson) break;
                     assert(formula.is_automorphism(domain_size, aw));
 
-                    sbp.add_lex_leader_predicate(formula, aw, order);
+                    sbp.add_lex_leader_predicate(aw, order);
                 }
 
                 for(auto v : orbit) {
@@ -883,7 +883,7 @@ public:
             }
             if(!formula.complete_automorphism(domain_size, aw)) break;
             assert(formula.is_automorphism(domain_size, aw));
-            sbp.add_lex_leader_predicate(formula, aw, order, INT32_MAX);
+            sbp.add_lex_leader_predicate(aw, order, INT32_MAX);
         }
 
         for(int j = 1; j < static_cast<int>(matrix_model.size()); ++j) {
@@ -895,7 +895,7 @@ public:
 
             if(!formula.complete_automorphism(domain_size, aw)) break;
             assert(formula.is_automorphism(domain_size, aw));
-            sbp.add_lex_leader_predicate(formula, aw, order, INT32_MAX);
+            sbp.add_lex_leader_predicate(aw, order, INT32_MAX);
         }
 
         // diagonal maps
@@ -1669,7 +1669,7 @@ public:
                 }
                 if(!formula.complete_automorphism(domain_size, aw)) break;
                 assert(formula.is_automorphism(domain_size, aw));
-                sbp.add_lex_leader_predicate(formula, aw, order, INT32_MAX);
+                sbp.add_lex_leader_predicate(aw, order, INT32_MAX);
             //}
         }
 
@@ -2227,10 +2227,7 @@ public:
         if(reopt) optimize_support(aw2, rng, optimize_passes, power_limit, original_generators);
     }
 
-    int add_lex_leader_for_generators(cnf& formula, predicate& sbp, int depth = 50) {
-        int constraints_added = 0;
-        //for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
-
+    void finalize_break_order(cnf& formula, predicate& sbp) {
         // we specify a literal order
         std::vector<std::pair<int, int>> literal_occurence;
         for(int i = 0; i < 2*formula.n_variables(); ++i) literal_occurence.emplace_back(i, 0);
@@ -2254,12 +2251,18 @@ public:
                 sbp.add_to_global_order(lit);
         }
 
+        sbp.finalize_order();
+    }
+
+    int add_lex_leader_for_generators(cnf& formula, predicate& sbp, int depth = 50) {
+        int constraints_added = 0;
+        //for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
 
         // now output breaking constraints for generators
         for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
             aw.reset();
             generators[j]->load(aw);
-            sbp.add_lex_leader_predicate(formula, aw, sbp.get_global_order(), depth);
+            sbp.add_lex_leader_predicate(aw, sbp.get_global_order(), depth);
             ++constraints_added;
         }
         return constraints_added;

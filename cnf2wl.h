@@ -1,19 +1,16 @@
 // Copyright 2024 Markus Anders
-// This file is part of satsuma 1.1.
+// This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
 #ifndef SATSUMA_CNF2WL_H
 #define SATSUMA_CNF2WL_H
 
 #include <string>
-#include <unordered_map>
-#include "tsl/robin_set.h"
 #include "utility.h"
 #include "dejavu/ds.h"
 #include <charconv>
 
 class cnf2wl {
-private:
     std::vector<std::pair<int, int>> clauses_pt;
     std::vector<std::pair<int, int>> clauses_watches;
     std::vector<int> clauses;
@@ -240,11 +237,11 @@ public:
             for (int j = 0; j < clause_size(i); ++j) {
                 const int l = literal_at_clause_pos(i, j);
                 std::to_chars(buffer, buffer + buffer_size, l);
-                for(int j = 0; buffer[j] != 0; ++j) putc_unlocked(buffer[j], out);
-                putc_unlocked(' ', out);
+                for(int j = 0; buffer[j] != 0; ++j) satsuma_putc(buffer[j], out);
+                satsuma_putc(' ', out);
             }
-            putc_unlocked('0', out);
-            putc_unlocked('\n', out);
+            satsuma_putc('0', out);
+            satsuma_putc('\n', out);
         }
     }
 };

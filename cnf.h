@@ -1,35 +1,49 @@
 // Copyright 2024 Markus Anders
-// This file is part of satsuma 1.1.
+// This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
 #ifndef SATSUMA_CNF_H
 #define SATSUMA_CNF_H
 
 #include <string>
-#include <unordered_map>
 #include "tsl/robin_set.h"
 #include "utility.h"
 #include "cnf2wl.h"
 
+/**
+ * A CNF formula with a hash table of clauses. Can not contain duplicate clauses.
+ */
 class cnf {
-private:
+    // hash sets for clauses
     tsl::robin_set<std::vector<int>, any_hash>                  clause_db_arbitrary;
     tsl::robin_set<std::pair<int, int>, pair_hash>                  clause_db_size2;
     tsl::robin_set<std::tuple<int, int, int>, triple_hash>          clause_db_size3;
+
+    // clauses as a vector
     std::vector<std::pair<int, int>> clauses_pt;
     std::vector<int> clauses;
+
+    // used lists
     std::vector<std::pair<int, int>> variable_to_nclauses;
     std::vector<std::vector<int>>    variable_used_list;
 
-    dejavu::markset test_used;
+    // statistics
     int number_of_variables = 0;
+    int removed_duplicate_clauses = 0;
 
+    // auxiliary data structures used for methods
+    dejavu::markset test_used;
     dejavu::markset support_test;
     std::vector<int> need_to_test_clauses;
     std::vector<int> test_clause;
     std::vector<std::pair<int, int>> add_pairs;
 
 public:
+    /**
+     * Initializes the data structure using a `cnf2wl` formula.
+     *
+     * @param other_formula the other formula
+     */
     void read_from_cnf2wl(cnf2wl& other_formula) {
         reserve(other_formula.n_variables(), other_formula.n_clauses() - other_formula.satisfied_clauses());
         std::vector<int> next_clause;
@@ -47,6 +61,12 @@ public:
         }
     }
 
+    /**
+     * Reserves space in the data structure.
+     *
+     * @param n variables
+     * @param m clauses
+     */
     void reserve(int n, int m) {
         number_of_variables = n;
         clauses_pt.reserve(m);
@@ -61,6 +81,12 @@ public:
         }
     }
 
+    /**
+     * Add clause to the hash sets.
+     *
+     * @param clause the clause
+     * @return whether the clause was actually added.
+     */
     bool write_db(std::vector<int>& clause) {
         // we're adding the clause, we are gonna update the hash tables in any case
         if (clause.size() == 2) {
@@ -72,6 +98,12 @@ public:
         }
     }
 
+    /**
+     * Checks whether clause is contained in the hash sets.
+     *
+     * @param clause
+     * @return whether clause is contained
+     */
     bool read_db(std::vector<int>& clause) const {
         // if we're not adding the clause, try to use sequential search
         int min_v = -1;
@@ -109,11 +141,20 @@ public:
         }
     }
 
+    /**
+     * Add a clause to the data structure.
+     *
+     * @param clause
+     */
     void add_clause(std::vector<int>& clause) {
         std::sort(clause.begin(), clause.end());
         clause.erase( unique( clause.begin(), clause.end() ), clause.end() );
 
-        if(write_db(clause)) [[unlikely]] return;
+        if(write_db(clause)) {
+            [[unlikely]]
+            ++removed_duplicate_clauses;
+            return;
+        }
 
         const int clause_number = clauses_pt.size();
         clauses_pt.emplace_back(clauses.size(), clauses.size() + clause.size());
@@ -132,6 +173,13 @@ public:
         }
     }
 
+    /**
+     * Tries to complete a given automorphism by extending it to negative literals.
+     *
+     * @param domain_size
+     * @param automorphism
+     * @return
+     */
     bool complete_automorphism(int domain_size, dejavu::groups::automorphism_workspace& automorphism) {
         support_test.initialize(domain_size);
 
@@ -165,6 +213,15 @@ public:
         return true;
     }
 
+    /**
+     * Check whether supposed automorphism is a bijection.
+     *
+     * @param scratch_set
+     * @param p
+     * @param supp
+     * @param supp_arr
+     * @return
+     */
     static bool cycle_check(dejavu::ds::markset& scratch_set, const int *p, int supp, const int *supp_arr) {
         scratch_set.reset();
         bool comp = true;
@@ -185,6 +242,13 @@ public:
         return variable_used_list[abs(graph_to_sat(v)) - 1].size();
     }
 
+    /**
+     * Test whether given map is an automorphism of the formula.
+     *
+     * @param domain_size
+     * @param automorphism supposed automorphism
+     * @return whether `automorphism` is indeed an automorphism of the formula represented by the datastructure
+     */
     bool is_automorphism(int domain_size, dejavu::groups::automorphism_workspace& automorphism) {
         test_used.initialize(n_clauses());
         support_test.initialize(domain_size);
@@ -282,6 +346,10 @@ public:
         return clauses_pt.size();
     }
 
+    int n_duplicate_clauses_removed() {
+        return removed_duplicate_clauses;
+    }
+
     int n_variables() {
         return number_of_variables;
     }
@@ -304,11 +372,11 @@ public:
             for (int j = 0; j < clause_size(i); ++j) {
                 const int l = literal_at_clause_pos(i, j);
                 auto const [end_ptr, err] = std::to_chars(buffer, buffer + buffer_size, l);
-                for(char* ptr = buffer; ptr < end_ptr; ++ptr) putc_unlocked(*ptr, out);
-                putc_unlocked(' ', out);
+                for(char* ptr = buffer; ptr < end_ptr; ++ptr) satsuma_putc(*ptr, out);
+                satsuma_putc(' ', out);
             }
-            putc_unlocked('0', out);
-            putc_unlocked('\n', out);
+            satsuma_putc('0', out);
+            satsuma_putc('\n', out);
         }
     }
 };

@@ -1,12 +1,12 @@
 // Copyright 2024 Markus Anders
-// This file is part of satsuma 1.1.
+// This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
 #ifndef SATSUMA_SATSUMA_H
 #define SATSUMA_SATSUMA_H
 
 #define SATSUMA_VERSION_MAJOR 1
-#define SATSUMA_VERSION_MINOR 1
+#define SATSUMA_VERSION_MINOR 2
 
 #include <utility>
 #include "dejavu/dejavu.h"
@@ -15,7 +15,7 @@
 #include "utility.h"
 #include "group_analyzer.h"
 #include "hypergraph.h"
-// include "proof.h"
+#include "proof.h"
 
 namespace satsuma {
     /**
@@ -23,12 +23,15 @@ namespace satsuma {
      *
      */
     class preprocessor {
-    private:
-        bool entered_output_file = false;
-        std::string output_filename = "";
+        bool        entered_output_file = false;
+        std::string output_filename     = "";
+
+        // further modules
+        std::ostream* log         = &std::clog; /**< logging */
+        proof_veripb* my_proof    = nullptr;    /**< proof logging */
+        profiler*     my_profiler = nullptr;    /**< profiling */
 
         // default configuration
-
         // modes
         bool struct_only = false;
         bool graph_only   = false;
@@ -51,17 +54,13 @@ namespace satsuma {
         bool opt_reopt = false;
 
         // options for breaking constraints
-        int break_depth            = 512;
+        int break_depth          = 512;
 
         // dejavu settings
         bool dejavu_print        = false;
         bool dejavu_prefer_dfs   = false;
         int  dejavu_budget_limit = -1; // <0 means no limit
 
-        //proof_veripb* my_proof    = nullptr;
-        profiler*     my_profiler = nullptr;
-
-        std::ostream* log = &std::clog;
         /**
             Compute a symmetry breaking predicate for the given formula.
 
@@ -71,6 +70,7 @@ namespace satsuma {
             stopwatch sw;
             stopwatch total;
 
+            // only output the graph used for symmetry detection
             if(graph_only) {
                 group_analyzer symmetries;
                 (*log) << "c\n";
@@ -80,6 +80,8 @@ namespace satsuma {
             }
 
             total.start();
+
+            if(my_proof) my_proof->header(formula.n_clauses() + formula.n_duplicate_clauses_removed());
 
             hypergraph_wrapper hypergraph(formula);
             if(hypergraph_macros) {
@@ -108,7 +110,7 @@ namespace satsuma {
             (*log) << "c detect special group actions" << std::endl;
             sw.start();
 
-            predicate sbp(formula.n_variables());
+            predicate sbp(formula.n_variables(), my_proof);
 
             // symmetries.detect_symmetric_action(formula, sbp);
             symmetries.detect_johnson_arity2(formula, sbp, johnson_orbit_limit);
@@ -131,17 +133,13 @@ namespace satsuma {
 
             if(my_profiler) my_profiler->add_result("detect_generic", t_detect_generic);
 
-            double t_optimize_gens = 0;
-            double t_break_generic = 0;
-            double t_break_binary  = 0;
-
             if(!struct_only && symmetries.n_generators() > 0) {
                 if(binary_clauses) {
                     sw.start();
                     (*log) << "c\n";
                     (*log) << "c add binary clauses" << std::endl;
                     const int binary_clauses = symmetries.add_binary_clauses_no_schreier(formula, sbp);
-                    t_break_binary = sw.stop();
+                    const double t_break_binary = sw.stop();
                     (*log) << "c\t produced " << binary_clauses << " clauses" << " (" << t_break_binary << "ms)"
                               << std::endl;
                     if(my_profiler) my_profiler->add_result("break_binary", t_break_binary);
@@ -154,17 +152,24 @@ namespace satsuma {
                            << opt_optimize_passes << ", conjugate_limit=" << opt_addition_limit << ")" << std::endl;
                     symmetries.optimize_generators(opt_optimize_passes, opt_addition_limit, opt_conjugate_limit,
                                                    opt_reopt);
-                    //symmetries.add_lex_leader_for_generators(sbp, 16);
-                    t_optimize_gens = sw.stop();
+                    const double t_optimize_gens = sw.stop();
                     (*log) << "c\t " << "(" << t_optimize_gens << "ms)" << std::endl;
                     if(my_profiler) my_profiler->add_result("optimize_gens", t_optimize_gens);
                 }
+            }
 
+            sw.start();
+            (*log) << "c\n";
+            (*log) << "c finalize break order and special generators" << std::endl;
+            symmetries.finalize_break_order(formula, sbp);
+            if(my_profiler) my_profiler->add_result("finalize_order", sw.stop());
+
+            if(!struct_only && symmetries.n_generators() > 0) {
                 sw.start();
                 (*log) << "c\n";
                 (*log) << "c add generic predicates (break_depth=" << break_depth << ")" << std::endl;
                 const int constraints = symmetries.add_lex_leader_for_generators(formula, sbp, break_depth);
-                t_break_generic = sw.stop();
+                const double t_break_generic = sw.stop();
                 (*log) << "c\t added predicates for " << constraints << " generators (" << t_break_generic << "ms)" << std::endl;
                 if(my_profiler) my_profiler->add_result("break_generic", t_break_generic);
             }
@@ -178,11 +183,14 @@ namespace satsuma {
             (*log) << "c\n";
             (*log) << "c write result";
 
-            //std::ofstream output_file_stream;
+            // file for output
             FILE* output_file;
-            const size_t buffer_size = 512*1024;
-            char buffer[buffer_size];
-            //output_file_stream. >pubsetbuf(buf, bufsize);
+
+            // buffer used for writing output
+            const size_t buffer_size = 512*1024; // 512KB
+            char  buffer[buffer_size];
+
+            // choose whether to write to a file, or standard out
             if(entered_output_file) {
                 (*log) << " to '" << output_filename << "'";
                 output_file = fopen(output_filename.c_str(), "w");
@@ -191,19 +199,22 @@ namespace satsuma {
                 output_file = stdout;
                 (*log) << " to cout";
             }
-
-            setvbuf(output_file, buffer, _IOFBF, buffer_size);
-
             (*log) << std::endl;
 
+            // attach buffer
+            setvbuf(output_file, buffer, _IOFBF, buffer_size);
+
+            // file header
             fprintf(output_file, "p cnf %d %d\n",formula.n_variables() + sbp.n_extra_variables(),
                                                   formula.n_clauses() + sbp.n_clauses());
-            flockfile(output_file);
+
+            // write clauses
+            satsuma_flockfile(output_file);
             formula.dimacs_output_clauses_unlocked(output_file);
             sbp.dimacs_output_clauses(output_file);
-            funlockfile(output_file);
+            satsuma_funlockfile(output_file);
 
-            const long write_data = ftell(output_file);
+            const long write_data = ftell(output_file); // how many bytes did we write?
             fclose(output_file);
             (*log) << "c \twritten " << write_data / 1000000.0 << "MB";
             const double t_output = sw.stop();
@@ -298,9 +309,9 @@ namespace satsuma {
             binary_clauses = binaryClauses;
         }
 
-        //void set_proof(proof_veripb* my_proof = nullptr) {
-        //    this->my_proof = my_proof;
-        //}
+        void set_proof(proof_veripb* my_proof = nullptr) {
+            this->my_proof = my_proof;
+        }
 
         void set_profiler(profiler* my_profiler = nullptr) {
             this->my_profiler = my_profiler;
@@ -313,6 +324,8 @@ namespace satsuma {
 
         void preprocess(cnf2wl& formula) {
             stopwatch sw;
+
+            // apply rudimentary, symmetry-preserving CNF preprocessing
             if(preprocess_cnf) {
                 (*log) << "c\n";
                 (*log) << "c preprocess cnf" << std::endl;
@@ -350,6 +363,8 @@ namespace satsuma {
                 if(my_profiler) my_profiler->add_result("unit", t_unit);
                 (*log) << "c\t -units=" << unit_propagations << ", -pures=" << pure_literal_num << " (" << t_unit << "ms)" << std::endl;
             }
+
+            // generate symmetry breaking predicates
             (*log) << "c\n";
             (*log) << "c make clause database";
             sw.start();

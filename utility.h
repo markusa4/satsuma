@@ -1,49 +1,81 @@
-// Copyright 2023 Markus Anders
-// This file is part of dejavu 2.0.
+// Copyright 2024 Markus Anders
+// This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
 #include <iostream>
 #include <algorithm>
 #include <random>
-#include <unordered_map>
-#include <unordered_set>
-#include <fstream>
-#include <set>
 #include <cstring>
-#include <queue>
-#include <memory>
 #include <chrono>
 #include <iomanip>
 
 #ifndef SATSUMA_UTILITY_H
 #define SATSUMA_UTILITY_H
 
-int sat_to_graph(int l) {
-    return 2*(abs(l)-1) + (l < 0);
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+// should be POSIX, where "_unlocked" is available
+#define satsuma_getc(f) getc_unlocked(f)
+#define satsuma_putc(f, c) putc_unlocked(f, c)
+#define satsuma_flockfile(f) flockfile(f);
+#define satsuma_funlockfile(f) funlockfile(f);
+#else
+// otherwise, "_unlocked" versions may not be available, so we use the normal ones
+#define satsuma_getc(f) getc(f)
+#define satsuma_putc(f, c) putc(f, c)
+#define satsuma_flockfile(f) {};
+#define satsuma_funlockfile(f) {};
+#endif
+
+
+/**
+* Maps a SAT literal to it's corresponding graph vertex
+*/
+inline int sat_to_graph(const int l) {
+    assert(l != 0);
+    const int var_times_2 = (abs(l)-1) << 1;
+    return var_times_2 + (l < 0);
 }
 
-int graph_to_sat(int vertex) {
-    const bool is_neg = vertex % 2;
-    int variable = floor(vertex/2) + 1;
+
+/**
+* Maps a graph vertex to it's corresponding SAT literal
+*/
+inline int graph_to_sat(const int vertex) {
+    assert(vertex >= 0);
+    const bool is_neg = vertex & 1; // == vertex % 2
+    const int vertex_div_2 = vertex >> 1; // == vertex / 2
+    const int variable = vertex_div_2 + 1;
     return variable * (is_neg?-1:1);
 }
 
-int graph_negate(int vertex) {
-    return sat_to_graph(-graph_to_sat(vertex));
+/**
+* "Negates" a graph vertex according to it's corresponding SAT literal
+*/
+inline int graph_negate(const int vertex) {
+    return sat_to_graph(-graph_to_sat(vertex)); // could be optimized
 }
 
-void print_vector(std::vector<int>& vec) {
+inline void debug_print_vector(std::vector<int>& vec) {
     for(auto v : vec) std::clog << v << " ";
     std::clog << std::endl;
 }
 
+/**
+* \brief Rudimentary class to keep track of time.
+*/
 class stopwatch {
     std::chrono::high_resolution_clock::time_point time_pt;
 public:
+    /**
+    * Start the timer.
+    */
     void start() {
         time_pt = std::chrono::high_resolution_clock::now();
     }
 
+    /**
+    * Retrieves the time elapsed since the start of the timer.
+    */
     double stop() {
         const std::chrono::high_resolution_clock::time_point now = std::chrono::high_resolution_clock::now();
         return (std::chrono::duration_cast<std::chrono::nanoseconds>(now - time_pt).count()) / 1000000.0;

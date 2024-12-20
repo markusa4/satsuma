@@ -1,11 +1,12 @@
 // Copyright 2024 Markus Anders
-// This file is part of satsuma 1.1.
+// This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
 #ifndef SATSUMA_PREDICATE_H
 #define SATSUMA_PREDICATE_H
 
 #include <vector>
+#include "proof.h"
 #include "dejavu/dejavu.h"
 #include "utility.h"
 
@@ -18,14 +19,21 @@ class predicate {
     std::vector<int> global_order;
     std::vector<int> lit_to_order_pos;
     dejavu::markset  in_global_order;
+    dejavu::markset  store_helper;
 
     std::vector<int> order_cache;
     std::vector<int> order_support;
     std::vector<int> vars_to_break_on;
+    std::vector<dejavu::groups::stored_automorphism> generator_cache;
 
     int extra_variables = 0;
     int variables = 0;
     dejavu::groups::automorphism_workspace aw;
+
+    proof_veripb* my_proof = nullptr;
+
+    bool finalized_order = false;
+
     /**
      * Introduce an additional variable.
      * @return the fresh variable
@@ -35,6 +43,29 @@ class predicate {
         return variables + extra_variables;
     }
 
+    void update_order_cache() {
+        if(global_order.size() + global_order_prefix.size() != order_cache.size()) {
+            order_cache.reserve(global_order.size() + global_order_prefix.size());
+            order_cache = global_order_prefix;
+            order_cache.insert(order_cache.end(), global_order.begin(), global_order.end());
+
+            // update inverse order
+            int global_pos = 1;
+            for(int i = 0; i < static_cast<int>(global_order_prefix.size()); ++i) {
+                const int lit = global_order_prefix[i];
+                lit_to_order_pos[lit]               =  global_pos;
+                lit_to_order_pos[graph_negate(lit)] = -global_pos;
+                ++global_pos;
+            }
+            for(int i = 0; i < static_cast<int>(global_order.size()); ++i) {
+                const int lit = global_order[i];
+                lit_to_order_pos[lit]               =  global_pos;
+                lit_to_order_pos[graph_negate(lit)] = -global_pos;
+                ++global_pos;
+            }
+        }
+    }
+
 public:
 
     /**
@@ -42,12 +73,14 @@ public:
      *
      * @param nv Number of variables in the original formula.
      */
-    predicate(int nv) {
+    predicate(int nv, proof_veripb* proof = nullptr) {
         in_global_order.initialize(2*nv);
         aw.resize(2*nv);
         lit_to_order_pos.resize(2*nv);
         allowed_lits.initialize(2*nv);
+        store_helper.initialize(2*nv);
         variables = nv;
+        my_proof = proof;
     }
 
     void assert_in_global_order(dejavu::groups::automorphism_workspace& automorphism) {
@@ -56,7 +89,7 @@ public:
         }
     };
 
-    void add_to_global_order(std::vector<int>& order, bool in_prefix = false) {
+    void add_to_global_order(const std::vector<int>& order, bool in_prefix = false) {
         for(auto v : order) {
             add_to_global_order(v, in_prefix);
         }
@@ -85,13 +118,13 @@ public:
     dejavu::markset allowed_lits;
 
     /**
- * NOTE: This method is a mildly altered version of a similar method in BreakID.
- *
- * @param automorphism
- * @param order
- * @param extra_constraint_limt
- * @return
- */
+     * NOTE: This method is a mildly altered version of a similar method in BreakID.
+     *
+     * @param automorphism
+     * @param order
+     * @param extra_constraint_limt
+     * @return
+     */
     std::vector<int> determine_break_order(dejavu::groups::automorphism_workspace& automorphism,
                                                std::vector<int>& order, std::vector<int>& result,
                                                int extra_constraint_limt = INT32_MAX) {
@@ -152,6 +185,21 @@ public:
         return (in_global_order.get(v) || in_global_order.get(sat_to_graph(-graph_to_sat(v))));
     }
 
+    void finalize_order() {
+        if(finalized_order) terminate_with_error("trying to finalize order twice");
+        update_order_cache();
+        if(my_proof) my_proof->load_order_preamble(order_cache, variables);
+        finalized_order = true;
+        if (generator_cache.size() > 0)
+            std::clog << "c\t writing " << generator_cache.size() << " deferred generators" << std::endl;
+        for(size_t i = 0; i < generator_cache.size(); ++i) {
+            generator_cache[i].load(aw);
+            add_lex_leader_predicate(aw, {}, INT32_MAX);
+        }
+
+        generator_cache.clear();
+    }
+
     /**
      * NOTE: This method is a mildly altered version of a similar method in BreakID.
      *
@@ -160,12 +208,18 @@ public:
      * @param automorphism
      * @param order suggested order to extend the global order (conflicting orders are ignored)
      */
-    void add_lex_leader_predicate([[maybe_unused]] cnf& formula, dejavu::groups::automorphism_workspace& automorphism,
-                                  std::vector<int>& order, int suggest_depth = 50) {
-        add_to_global_order(order);
-        assert_in_global_order(automorphism);
+    void add_lex_leader_predicate(dejavu::groups::automorphism_workspace& automorphism,
+                                  const std::vector<int>& order, int suggest_depth = 50) {
+        if(!finalized_order) add_to_global_order(order);
 
-        assert(formula.is_automorphism(2*formula.n_variables(), automorphism));
+        // delay actual generation in case we are proof logging
+        if(!finalized_order && my_proof) {
+            generator_cache.emplace_back();
+            generator_cache.back().store(2*variables, automorphism, store_helper);
+            return;
+        }
+
+        assert_in_global_order(automorphism);
 
         //if(!formula.is_automorphism(2*formula.n_variables(), automorphism)){
         //    std::clog << "c ****WARNING skipping uncertified generator" << std::endl;
@@ -177,26 +231,7 @@ public:
         int prev_sym = 0;
         int prev_tst = 0; // previous tseitin
 
-        if(global_order.size() + global_order_prefix.size() != order_cache.size()) {
-            order_cache.reserve(global_order.size() + global_order_prefix.size());
-            order_cache = global_order_prefix;
-            order_cache.insert(order_cache.end(), global_order.begin(), global_order.end());
-
-            // update inverse order
-            int global_pos = 1;
-            for(int i = 0; i < static_cast<int>(global_order_prefix.size()); ++i) {
-                const int lit = global_order_prefix[i];
-                lit_to_order_pos[lit]               =  global_pos;
-                lit_to_order_pos[graph_negate(lit)] = -global_pos;
-                ++global_pos;
-            }
-            for(int i = 0; i < static_cast<int>(global_order.size()); ++i) {
-                const int lit = global_order[i];
-                lit_to_order_pos[lit]               =  global_pos;
-                lit_to_order_pos[graph_negate(lit)] = -global_pos;
-                ++global_pos;
-            }
-        }
+        update_order_cache();
 
         // reduce order to the only those literals, which occur in the support of the automorphism
         order_from_support(automorphism, order_support);
@@ -204,30 +239,55 @@ public:
         // then determine the break order
         determine_break_order(automorphism, order_support, vars_to_break_on, suggest_depth);
 
-        for (auto l: vars_to_break_on) {
-            int sym = graph_to_sat(automorphism.p()[sat_to_graph(l)]);
+        if(my_proof) my_proof->lex_leader_dominance(automorphism, order_support);
+
+        prev_tst = add_variable();
+        sbp.push_back({prev_tst});
+        if(my_proof) my_proof->lex_leader_tseitin(sbp.back(), prev_tst);
+
+        //for (auto l: vars_to_break_on) {
+        for (size_t i = 0; i < order_support.size(); ++i) {
+            const int l = graph_to_sat(order_support[i]);
+            const int sym = graph_to_sat(automorphism.p()[sat_to_graph(l)]);
             int tst = 0;
-            if (extra_constraints == 0) {
-                sbp.push_back({-l, sym});
-            } else if (extra_constraints == 1) {
-                tst = add_variable();
-                sbp.push_back({-prev_lit, -l, sym});
-                sbp.push_back({-prev_lit, tst});
-                sbp.push_back({prev_sym, -l, sym});
-                sbp.push_back({prev_sym, tst});
+
+            // we continue logging, not outputting further breaking constraints
+            const bool only_logging = i >= vars_to_break_on.size();
+
+            // no need to continue only logging, when we are, in fact, not logging
+            if(only_logging && !my_proof) break;
+
+            if(extra_constraints == 0) {
+                if(!only_logging) sbp.push_back({-l, sym});
+                if (my_proof) my_proof->lex_leader_clause(sbp.back());
             } else {
                 tst = add_variable();
-                sbp.push_back({-prev_tst, -prev_lit, -l, sym});
-                sbp.push_back({-prev_tst, -prev_lit, tst});
-                sbp.push_back({-prev_tst, prev_sym, -l, sym});
-                sbp.push_back({-prev_tst, prev_sym, tst});
+
+                // output constraints if we are not only logging
+                if(!only_logging) {
+                    sbp.push_back({prev_sym, -prev_tst, tst});
+                    sbp.push_back({-prev_lit, -prev_tst, tst});
+                    //sbp.push_back({-tst, prev_tst});
+                    //sbp.push_back({-tst, -prev_sym, prev_lit});
+                    sbp.push_back({-tst, -l, sym});
+                }
+
+                // proof logging
+                if(my_proof) {
+                    my_proof->lex_leader_tseitin({prev_sym, -prev_tst, tst}, tst);
+                    my_proof->lex_leader_tseitin({-prev_lit, -prev_tst, tst}, tst);
+                    my_proof->lex_leader_tseitin({-tst, prev_tst}, -tst);
+                    my_proof->lex_leader_tseitin({-tst, -prev_sym, prev_lit}, -tst);
+                    my_proof->lex_leader_use_and_update_hint(prev_lit);
+                    my_proof->lex_leader_clause({-tst, -l, sym});
+                }
+
+                prev_tst = tst;
             }
 
             ++extra_constraints;
-
             prev_lit = l;
             prev_sym = sym;
-            prev_tst = tst;
         }
     }
 
@@ -275,11 +335,11 @@ public:
             for(const int l : c) {
                 auto const [end_ptr, err] = std::to_chars(buffer, buffer + buffer_size, l);
                 if(err == std::errc::value_too_large) terminate_with_error("buffer too small");
-                for(char* ptr = buffer; ptr < end_ptr; ++ptr) putc_unlocked(*ptr, out);
-                putc_unlocked(' ', out);
+                for(char* ptr = buffer; ptr < end_ptr; ++ptr) satsuma_putc(*ptr, out);
+                satsuma_putc(' ', out);
             }
-            putc_unlocked('0', out);
-            putc_unlocked('\n', out);
+            satsuma_putc('0', out);
+            satsuma_putc('\n', out);
         }
     }
 };

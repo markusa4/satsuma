@@ -21,4 +21,12 @@ add_compile_options("-march=native")
 add_definitions(-DNDEBUG)
 #add_definitions(-DDEJ_DEBUG)
 
+# boost required at the moment
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+find_package(Boost 1.70 REQUIRED)
+INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
+
 add_executable(satsuma satsuma.cpp)
+#TARGET_LINK_LIBRARIES(satsuma LINK_PUBLIC ${Boost_LIBRARIES})
