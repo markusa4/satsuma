@@ -46,7 +46,8 @@ public:
      *
      * @param other_formula the other formula
      */
-    void read_from_cnf2wl(cnf2wl& other_formula) {
+    void read_from_cnf2wl(cnf2wl& other_formula, bool original_order = true) {
+        keep_original_order = original_order;
         reserve(other_formula.n_variables(), other_formula.n_clauses() - other_formula.satisfied_clauses());
         std::vector<int> next_clause;
         for(int i = 0; i < other_formula.n_clauses(); ++i) {

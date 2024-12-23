@@ -19,7 +19,6 @@ class group_analyzer {
     dejavu::solver d;
     dejavu::ir::refinement ref;
 
-    dejavu::static_graph graph;
     dejavu::sgraph   save_graph;
     dejavu::coloring save_col;
     dejavu::coloring remainder_col;
@@ -44,6 +43,7 @@ class group_analyzer {
     long initial_split_counter = 0;
 
     long absolute_support_limit = -1;
+    long graph_component_size_limit = -1;
 
     void my_hook(int n, const int* p, int nsupp, const int *supp) {
         orbits_graph.add_automorphism_to_orbit(p, nsupp, supp);
@@ -87,6 +87,7 @@ public:
         store_helper.initialize(domain_size);
 
         // construct graph
+        dejavu::static_graph graph;
         graph.initialize_graph(domain_size_graph, formula.n_total_clause_size() + formula.n_variables());
         int unused_color = 2;
 
@@ -196,6 +197,7 @@ public:
         int count_edges = 0;
 
         // construct graph
+        dejavu::static_graph graph;
         graph.initialize_graph(domain_size_graph, total_edges);
         int unused_color = 2 + use_variable_vertex;
 
@@ -376,21 +378,23 @@ public:
         orbits_graph.reset();
 
         // call dejavu
-        std::clog << "c\t [graph: #vertices " << graph.get_sgraph()->v_size << " #edges " <<
-                                                 graph.get_sgraph()->e_size << "]\n";
+        std::clog << "c\t [graph: #vertices " << save_graph.v_size << " #edges " <<
+                                                 save_graph.e_size << "]\n";
         //auto test_hook = dejavu::hooks::ostream_hook(std::clog);
         auto hook_func = dejavu_hook(self_hook());
-        dejavu::hooks::strong_certification_hook cert_hook(graph, &hook_func);
+        dejavu::hooks::strong_certification_hook cert_hook(save_graph, &hook_func);
         //graph.dump_dimacs("graph_binary.dimacs");
         d.set_prefer_dfs(dejavu_prefer_dfs);
         d.set_print(dejavu_print);
         d.set_limit_budget(dejavu_backtracking_limit);
         d.set_limit_schreier_support(absolute_support_limit);
+        d.set_limit_component(graph_component_size_limit);
         orbits_graph.reset();
         orbits.reset();
         std::clog << "c\t dejavu (support_limit=" << absolute_support_limit*4/1024.0/1024.0 << "MB, budget_limit=" <<
                      dejavu_backtracking_limit << ")";
-        d.automorphisms(graph.get_sgraph(), remainder_col.vertex_to_col, cert_hook.get_hook());
+        d.automorphisms(&save_graph, remainder_col.vertex_to_col, cert_hook.get_hook());
+        //d.automorphisms(&save_graph, remainder_col.vertex_to_col, &hook_func);
         if (d.get_reached_limit()) std::clog << " exceeded limit";
         //d.automorphisms(graph.get_sgraph(), graph.get_coloring(), test_hook.get_hook());
     }
@@ -595,10 +599,11 @@ public:
      */
     void detect_johnson_arity2(cnf& formula, predicate& sbp, int limit = -1) {
         std::clog << "c\t probe for Johnson action (limit=" << limit << ")" << std::endl;
-        probe_base_length();
 
         // skip special detection for shallow groups
         if(probed_base_length < 4*log2(orbit_list.size()) && orbit_list.size() > 10000) return;
+
+        probe_base_length();
 
         for(int i = 0; i < static_cast<int>(orbit_list.size()); ++i) {
             if(limit >= 0 && i >= limit) return;
@@ -983,9 +988,10 @@ public:
         std::clog << "c\t probe for row-column symmetry (limit=" << limit <<
                      ", splits=" << split_limit/1000.0/1000.0 <<"M)" << std::endl;
 
-
         // skip special detection for shallow groups
         if(probed_base_length < 4*log2(orbit_list.size()) && orbit_list.size() > 10000) return;
+
+        probe_base_length();
 
         std::vector<int> in_row; // maps vertices to representative in column of anchor_vertex
         std::vector<int> in_column; // maps vertices to representative in row of anchor_vertex
@@ -1777,10 +1783,10 @@ public:
                              std::vector<int>* order_prev = nullptr) {
         std::clog << "c\t probe for row symmetry (limit=" << limit << ", splits=" << split_limit/1000.0/1000.0 <<"M)" << std::endl;
 
-
-
         // skip special detection for shallow groups
         if(probed_base_length < 4*log2(orbit_list.size()) && orbit_list.size() > 10000) return;
+
+        probe_base_length();
 
         dejavu::coloring test_col;
         test_col.copy_any(&save_col);
@@ -2036,6 +2042,8 @@ public:
         int best_support = INT32_MAX;
 
         for(int k = 0; k < optimize_passes; ++k) {
+            if (k == 3 && shrinks == 0) break;
+
             double total_support = 0;
             //int best_j       = -1;
 
@@ -2339,7 +2347,8 @@ public:
         return d.get_automorphism_group_size();
     }
 
-    group_analyzer(long set_absolute_support_limit = -1) : absolute_support_limit(set_absolute_support_limit) {};
+    group_analyzer(long set_absolute_support_limit = -1, long set_graph_component_size_limit = -1) :
+    absolute_support_limit(set_absolute_support_limit), graph_component_size_limit(set_graph_component_size_limit) {};
 
     ~group_analyzer() {
         for(int j = 0; j < static_cast<int>(generators.size()); ++j) {

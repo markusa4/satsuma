@@ -36,6 +36,9 @@ namespace satsuma {
         bool struct_only = false;
         bool graph_only   = false;
 
+        // general limits
+        long graph_component_size_limit = 20000000; //< hard limit for component size
+
         // limits for special detection
         int row_orbit_limit        = 64;
         int row_column_orbit_limit = 64;
@@ -99,7 +102,7 @@ namespace satsuma {
             (*log) << "c\n";
             (*log) << "c make graph and approximate orbits";
             sw.start();
-            group_analyzer symmetries(absolute_support_limit);
+            group_analyzer symmetries(absolute_support_limit, graph_component_size_limit);
             //symmetries.compute_from_cnf(formula);
             symmetries.compute_from_hypergraph(hypergraph);
             hypergraph.clear(); // now that we have the graph, we don't need the corresponding hypergraph structure
@@ -116,10 +119,14 @@ namespace satsuma {
             predicate sbp(formula.n_variables(), my_proof);
 
             // symmetries.detect_symmetric_action(formula, sbp);
-            symmetries.detect_johnson_arity2(formula, sbp, johnson_orbit_limit);
-            symmetries.detect_row_column_symmetry(formula, sbp, row_column_orbit_limit,
-                                                     std::max(16*formula.n_variables(), 1024*1024*16));
-            symmetries.detect_row_symmetry(formula, sbp, row_orbit_limit, std::max(16*formula.n_variables(), 1024*1024*16));
+            if (graph_component_size_limit <= 0 || 2*formula.n_variables() < graph_component_size_limit) {
+                symmetries.detect_johnson_arity2(formula, sbp, johnson_orbit_limit);
+                symmetries.detect_row_column_symmetry(formula, sbp, row_column_orbit_limit,
+                                                         std::max(16*formula.n_variables(), 1024*1024*16));
+                symmetries.detect_row_symmetry(formula, sbp, row_orbit_limit, std::max(16*formula.n_variables(), 1024*1024*16));
+            } else {
+            (*log) << "c\t exceeded limit" << std::endl;
+            }
 
             const double t_detect_special = sw.stop();
             (*log) << "c\t (" << t_detect_special << "ms)" << std::endl;
@@ -370,11 +377,12 @@ namespace satsuma {
             }
 
             // generate symmetry breaking predicates
+            constexpr bool keep_original_order = true;
             (*log) << "c\n";
-            (*log) << "c make clause database";
+            (*log) << "c make clause database (keep_order=" << keep_original_order << ")";
             sw.start();
             cnf formula_db;
-            formula_db.read_from_cnf2wl(formula);
+            formula_db.read_from_cnf2wl(formula, keep_original_order);
             formula.clear();
             const double t_clause_db = sw.stop();
             if(my_profiler) my_profiler->add_result("clause_db", t_clause_db);

@@ -119,18 +119,18 @@ namespace satsuma {
                 literal_iso_inv[i] = orbits2.orbit_size(i);
             }
 
-            //std::vector<std::vector<int>> vertex_to_orbit2;
-            //vertex_to_orbit2.resize(2*wrapped_formula.n_variables());
+            std::vector<std::vector<int>> vertex_to_orbit2;
+            vertex_to_orbit2.resize(2*wrapped_formula.n_variables());
 
             // orbit_collect
-            /*for(int i = 0; i < 2*wrapped_formula.n_variables(); ++i) {
+            for(int i = 0; i < 2*wrapped_formula.n_variables(); ++i) {
                 //if (!orbits.represents_orbit(i)) continue;
                 if (orbits2.orbit_size(i) < 3) continue;
                 vertex_to_orbit2[orbits2.find_orbit(i)].push_back(i);
-            }*/
+            }
 
             // orbit_replace
-            /*clause_tombstone2.reserve(binary_clauses);
+            clause_tombstone2.reserve(binary_clauses);
             for(int i = 0; i < 2*wrapped_formula.n_variables(); ++i) {
                 if (vertex_to_orbit2[i].size() < 3) continue;
 
@@ -143,14 +143,13 @@ namespace satsuma {
                         int l2 = graph_to_sat(vertex_to_orbit2[i][k]);
                         std::vector<int> clause = {l1, l2};
                         std::sort(clause.begin(), clause.end());
-                        can_replace = wrapped_formula.access_clause_db(clause, false);
+                        can_replace = wrapped_formula.read_db(clause);
                         if (!can_replace) break;
                     }
                     if (!can_replace) break;
                 }
 
                 if (can_replace) {
-                    ++orbit_replace;
                     for (int j = 0; j < vertex_to_orbit2[i].size(); ++j) {
                         int l1 = graph_to_sat(vertex_to_orbit2[i][j]);
                         for (int k = j + 1; k < vertex_to_orbit2[i].size(); ++k) {
@@ -174,7 +173,7 @@ namespace satsuma {
                 const int l1 = wrapped_formula.literal_at_clause_pos(i, 0);
                 const int l2 = wrapped_formula.literal_at_clause_pos(i, 1);
                 if(clause_tombstone2.find({l1, l2}) != clause_tombstone2.end()) remove_clause(i);
-            }*/
+            }
 
             // ternary negation macro
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
