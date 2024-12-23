@@ -42,7 +42,7 @@ class proof_veripb {
   }
 
 public:
-  proof_veripb(std::ostream& proof_file) : proof_file(proof_file) {};
+  explicit proof_veripb(std::ostream& proof_file) : proof_file(proof_file) {};
 
   void header(int n_original_clauses) {
     constraints = n_original_clauses;

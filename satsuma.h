@@ -56,6 +56,8 @@ namespace satsuma {
         // options for breaking constraints
         int break_depth          = 512;
 
+        long absolute_support_limit = 2 * 256 * 1024 * 1024; // we want no more than 2 GB worth of symmetries
+
         // dejavu settings
         bool dejavu_print        = false;
         bool dejavu_prefer_dfs   = false;
@@ -97,9 +99,10 @@ namespace satsuma {
             (*log) << "c\n";
             (*log) << "c make graph and approximate orbits";
             sw.start();
-            group_analyzer symmetries;
+            group_analyzer symmetries(absolute_support_limit);
             //symmetries.compute_from_cnf(formula);
             symmetries.compute_from_hypergraph(hypergraph);
+            hypergraph.clear(); // now that we have the graph, we don't need the corresponding hypergraph structure
             (*log) << std::endl << "c\t [group: #orbits ~= " << symmetries.n_orbits() << "]";
             const double t_approximate = sw.stop();
             (*log) << " (" << t_approximate << "ms)" << std::endl;
@@ -114,8 +117,9 @@ namespace satsuma {
 
             // symmetries.detect_symmetric_action(formula, sbp);
             symmetries.detect_johnson_arity2(formula, sbp, johnson_orbit_limit);
-            symmetries.detect_row_column_symmetry(formula, sbp, row_column_orbit_limit);
-            symmetries.detect_row_symmetry(formula, sbp, row_orbit_limit);
+            symmetries.detect_row_column_symmetry(formula, sbp, row_column_orbit_limit,
+                                                     std::max(16*formula.n_variables(), 1024*1024*16));
+            symmetries.detect_row_symmetry(formula, sbp, row_orbit_limit, std::max(16*formula.n_variables(), 1024*1024*16));
 
             const double t_detect_special = sw.stop();
             (*log) << "c\t (" << t_detect_special << "ms)" << std::endl;
@@ -125,6 +129,7 @@ namespace satsuma {
             (*log) << "c\n";
             (*log) << "c detect symmetries on remainder" << std::endl;
             sw.start();
+            formula.clear_db(); // don't need the DB anymore, so let's save memory
             symmetries.detect_symmetries_generic(dejavu_print, dejavu_prefer_dfs);
             (*log) << std::endl << "c\t [group: #symmetries " << symmetries.group_size() << " #generators " << symmetries.n_generators()
                        << "]";
@@ -370,6 +375,7 @@ namespace satsuma {
             sw.start();
             cnf formula_db;
             formula_db.read_from_cnf2wl(formula);
+            formula.clear();
             const double t_clause_db = sw.stop();
             if(my_profiler) my_profiler->add_result("clause_db", t_clause_db);
             (*log) << " (" << t_clause_db << "ms)";

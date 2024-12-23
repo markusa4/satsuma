@@ -21,11 +21,13 @@ class cnf2wl {
 
     int number_of_variables = 0;
     int units_applied = 0;
+    int redundant_removed = 0;
     dejavu::ds::markset in_units;
     std::vector<int>    units;
 
     dejavu::ds::markset clause_satisfied;
     dejavu::ds::markset found_literal;
+    dejavu::ds::markset test_redundant;
 
 public:
     void reserve(int n, int m) {
@@ -37,6 +39,7 @@ public:
         variable_watches_clause.resize(2*n);
         assignment.resize(2*n);
         found_literal.initialize(2*n);
+        test_redundant.initialize(2*n);
 
         clause_satisfied.initialize(m);
         in_units.initialize(2*n);
@@ -69,8 +72,17 @@ public:
     }
 
     void add_clause(std::vector<int>& clause) {
-        std::sort(clause.begin(), clause.end());
-        clause.erase( unique( clause.begin(), clause.end() ), clause.end() );
+        test_redundant.reset();
+        for(auto& l : clause) {
+            const int graph_l  = sat_to_graph(l);
+            const int graph_nl = sat_to_graph(-l);
+            if(test_redundant.get(graph_l)) continue;
+            if(test_redundant.get(graph_nl)) {
+                ++redundant_removed;
+                return;
+            }
+            test_redundant.set(graph_l);
+        }
 
         const int clause_number = clauses_pt.size();
         clauses_pt.emplace_back(clauses.size(), clauses.size() + clause.size());
@@ -215,6 +227,10 @@ public:
         return clauses_pt.size();
     }
 
+    int n_redundant_clauses() {
+        return redundant_removed;
+    }
+
     int n_variables() {
         return number_of_variables;
     }
@@ -243,6 +259,34 @@ public:
             satsuma_putc('0', out);
             satsuma_putc('\n', out);
         }
+    }
+
+    void clear() {
+        clauses_pt.clear();
+        clauses_watches.clear();
+        clauses.clear();
+        literal_used_list.clear();
+        variable_watches_clause.clear();
+        assignment.clear();
+        units.clear();
+
+        clauses_pt.shrink_to_fit();
+        clauses_watches.shrink_to_fit();
+        clauses.shrink_to_fit();
+        literal_used_list.shrink_to_fit();
+        variable_watches_clause.shrink_to_fit();
+        assignment.shrink_to_fit();
+        units.shrink_to_fit();
+
+        number_of_variables = 0;
+        units_applied = 0;
+        redundant_removed = 0;
+        in_units.initialize(0);
+
+        clause_satisfied.initialize(0);
+        found_literal.initialize(0);
+        test_redundant.initialize(0);
+
     }
 };
 

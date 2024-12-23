@@ -172,7 +172,7 @@ public:
         });
 
         order.clear();
-        for (auto const [l, ord]: order_support) {
+        for (auto const& [l, ord]: order_support) {
             order.push_back(l);
         }
     }

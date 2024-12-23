@@ -262,7 +262,8 @@ int commandline_mode(int argc, char **argv) {
     const double t_parse = sw.stop();
     my_profiler.add_result("parse", t_parse);
     if(print) std::clog << " (" << sw.stop() << "ms)" << std::endl;
-    std::clog << "c\t [cnf: #variables " << formula.n_variables() << " #clauses " << formula.n_clauses() << " #arr "
+    std::clog << "c\t [cnf: #variables " << formula.n_variables() << " #clauses " << formula.n_clauses()
+                     << " #redundant " << formula.n_redundant_clauses() << " #arr "
                      << formula.n_len() <<  "]"<< std::endl;
 
     if(use_proof_logging && print) std::clog << "c output proof to '" << proof_filename << "'\n";

@@ -9,7 +9,6 @@
 
 namespace satsuma {
     class hypergraph_wrapper {
-    private:
         std::vector<int> literal_to_binary_clauses;
         std::vector<int> literal_to_ternary_clauses;
         std::vector<int> literal_to_hyperedges;
@@ -31,7 +30,7 @@ namespace satsuma {
         hypergraph_wrapper(cnf &formula) : wrapped_formula(formula) {
             // initialize trivial hypergraph wrapper (which does not change the underlying formula)
             literal_to_binary_clauses.resize(wrapped_formula.n_variables()*2);
-            literal_to_ternary_clauses.resize(wrapped_formula.n_variables()*2);
+            //literal_to_ternary_clauses.resize(wrapped_formula.n_variables()*2);
             literal_to_hyperedges.resize(wrapped_formula.n_variables()*2);
             literal_to_removed.resize(wrapped_formula.n_variables()*2);
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
@@ -43,9 +42,9 @@ namespace satsuma {
 
                 if(wrapped_formula.clause_size(i) == 3) {
                     ++ternary_clauses;
-                    literal_to_ternary_clauses[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 0))] += 1;
-                    literal_to_ternary_clauses[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 1))] += 1;
-                    literal_to_ternary_clauses[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 2))] += 1;
+                    //literal_to_ternary_clauses[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 0))] += 1;
+                    //literal_to_ternary_clauses[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 1))] += 1;
+                    //literal_to_ternary_clauses[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 2))] += 1;
                 }
             }
             clause_tombstone.resize(wrapped_formula.n_clauses());
@@ -63,9 +62,9 @@ namespace satsuma {
             return literal_to_removed[sat_to_graph(literal)];
         }
 
-        int literal_to_number_of_ternary_clauses(int literal) {
-            return literal_to_ternary_clauses[sat_to_graph(literal)];
-        }
+        //int literal_to_number_of_ternary_clauses(int literal) {
+        //    return literal_to_ternary_clauses[sat_to_graph(literal)];
+        //}
 
 
         void add_hyperedge(std::vector<int> hyperedge, int color) {
@@ -98,7 +97,7 @@ namespace satsuma {
         unsigned long iso_inv(int literal) {
             unsigned long hash = hash32shift(wrapped_formula.literal_to_number_of_clauses(literal));
             hash = add_to_hash(hash, hash32shift(literal_to_number_of_binary_clauses(literal)));
-            hash = add_to_hash(hash, hash32shift(literal_to_number_of_ternary_clauses(literal)));
+            //hash = add_to_hash(hash, hash32shift(literal_to_number_of_ternary_clauses(literal)));
             hash = add_to_hash(hash, hash32shift(literal_iso_inv[sat_to_graph(literal)]));
             return hash;
         }
@@ -311,6 +310,22 @@ namespace satsuma {
             std::clog << "c\t +hyedge=" << n_hyperedges() << ", +hyedge_sup=" << hyperedge_support << ", -cl=" << removed_clauses
                       << ", -cl_sup=" << removed_clause_support << std::endl;
             //std::clog << "c\t found " << replacement_possible.size() << " [clauses: " << potential_removed_clauses << "] potential hypergraph reductions" << std::endl;
+        }
+
+        void clear() {
+            literal_to_binary_clauses.clear();
+            literal_to_ternary_clauses.clear();
+            literal_to_hyperedges.clear();
+            literal_to_removed.clear();
+            literal_iso_inv.clear();
+            clause_tombstone.clear();
+
+            literal_to_binary_clauses.shrink_to_fit();
+            literal_to_ternary_clauses.shrink_to_fit();
+            literal_to_hyperedges.shrink_to_fit();
+            literal_to_removed.shrink_to_fit();
+            literal_iso_inv.shrink_to_fit();
+            clause_tombstone.shrink_to_fit();
         }
     };
 }

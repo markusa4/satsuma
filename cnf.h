@@ -38,6 +38,8 @@ class cnf {
     std::vector<int> test_clause;
     std::vector<std::pair<int, int>> add_pairs;
 
+    bool keep_original_order = true;
+
 public:
     /**
      * Initializes the data structure using a `cnf2wl` formula.
@@ -70,7 +72,7 @@ public:
     void reserve(int n, int m) {
         number_of_variables = n;
         clauses_pt.reserve(m);
-        clauses.reserve(4*m);
+        clauses.reserve(3*m);
         variable_used_list.resize(n);
         variable_to_nclauses.reserve(n);
         clause_db_arbitrary.reserve(m);
@@ -88,13 +90,24 @@ public:
      * @return whether the clause was actually added.
      */
     bool write_db(std::vector<int>& clause) {
-        // we're adding the clause, we are gonna update the hash tables in any case
-        if (clause.size() == 2) {
-            return !clause_db_size2.insert({clause[0], clause[1]}).second;
-        } else if (clause.size() == 3) {
-            return !clause_db_size3.insert({clause[0], clause[1], clause[2]}).second;
+        static std::vector<int> temporary_clause;
+        std::vector<int>* use_clause;
+        if(keep_original_order) {
+            temporary_clause = clause;
+            std::sort(temporary_clause.begin(), temporary_clause.end());
+            temporary_clause.erase( unique( temporary_clause.begin(), temporary_clause.end() ), temporary_clause.end() );
+            use_clause = &temporary_clause;
         } else {
-            return !clause_db_arbitrary.insert(clause).second;
+            use_clause = &clause;
+        }
+
+        // we're adding the clause, we are gonna update the hash tables in any case
+        if (use_clause->size() == 2) {
+            return !clause_db_size2.insert({(*use_clause)[0], (*use_clause)[1]}).second;
+        } else if (use_clause->size() == 3) {
+            return !clause_db_size3.insert({(*use_clause)[0], (*use_clause)[1], (*use_clause)[2]}).second;
+        } else {
+            return !clause_db_arbitrary.insert((*use_clause)).second;
         }
     }
 
@@ -116,7 +129,7 @@ public:
                 min_v_size = sz;
             }
         }
-        if (min_v != -1 && min_v_size < 128) {
+        if (min_v != -1 && min_v_size < 128 && !keep_original_order) {
             for(auto const c : variable_used_list[min_v]) {
                 auto const [pt_start, pt_end] = clauses_pt[c];
                 if(pt_end - pt_start != static_cast<int>(clause.size())) continue;
@@ -128,16 +141,15 @@ public:
                 if(j == static_cast<int>(clause.size())) return true;
             }
             return false;
+        }
+        if(clause.size() == 2) {
+            const std::pair<int, int> check_pair = {clause[0], clause[1]};
+            return clause_db_size2.find(check_pair) != clause_db_size2.end();
+        } else if(clause.size() == 3) {
+            const std::tuple<int, int, int> check_triple = {clause[0], clause[1], clause[2]};
+            return clause_db_size3.find(check_triple) != clause_db_size3.end();
         } else {
-            if(clause.size() == 2) {
-                const std::pair<int, int> check_pair = {clause[0], clause[1]};
-                return clause_db_size2.find(check_pair) != clause_db_size2.end();
-            } else if(clause.size() == 3) {
-                const std::tuple<int, int, int> check_triple = {clause[0], clause[1], clause[2]};
-                return clause_db_size3.find(check_triple) != clause_db_size3.end();
-            } else {
-                return clause_db_arbitrary.find(clause) != clause_db_arbitrary.end();
-            }
+            return clause_db_arbitrary.find(clause) != clause_db_arbitrary.end();
         }
     }
 
@@ -147,8 +159,10 @@ public:
      * @param clause
      */
     void add_clause(std::vector<int>& clause) {
-        std::sort(clause.begin(), clause.end());
-        clause.erase( unique( clause.begin(), clause.end() ), clause.end() );
+        if(!keep_original_order) {
+            std::sort(clause.begin(), clause.end());
+            clause.erase( unique( clause.begin(), clause.end() ), clause.end() );
+        }
 
         if(write_db(clause)) {
             [[unlikely]]
@@ -352,6 +366,12 @@ public:
 
     int n_variables() {
         return number_of_variables;
+    }
+
+    void clear_db() {
+        clause_db_arbitrary = tsl::robin_set<std::vector<int>, any_hash>();
+        clause_db_size2     = tsl::robin_set<std::pair<int, int>, pair_hash>();
+        clause_db_size3     = tsl::robin_set<std::tuple<int, int, int>, triple_hash>();
     }
 
     void dimacs_output_clauses(std::ostream& out) {

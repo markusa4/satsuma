@@ -2,6 +2,8 @@
 // This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
+#include <ranges>
+
 #include "cnf.h"
 #include "dejavu/dejavu.h"
 #include "predicate.h"
@@ -37,6 +39,11 @@ class group_analyzer {
 
     int domain_size = 0;
     int domain_size_graph = 0;
+
+    int probed_base_length = 0;
+    long initial_split_counter = 0;
+
+    long absolute_support_limit = -1;
 
     void my_hook(int n, const int* p, int nsupp, const int *supp) {
         orbits_graph.add_automorphism_to_orbit(p, nsupp, supp);
@@ -362,21 +369,29 @@ public:
     }
 
     void detect_symmetries_generic(bool dejavu_print=false, bool dejavu_prefer_dfs=false) {
+        constexpr int dejavu_backtracking_limit = 64;
+
         orbits.reset();
         orbits_graph.reset();
         orbits_graph.reset();
 
         // call dejavu
-        std::clog << "c\t [graph: #vertices " << graph.get_sgraph()->v_size << " #edges " << graph.get_sgraph()->e_size << "]";
+        std::clog << "c\t [graph: #vertices " << graph.get_sgraph()->v_size << " #edges " <<
+                                                 graph.get_sgraph()->e_size << "]\n";
         //auto test_hook = dejavu::hooks::ostream_hook(std::clog);
         auto hook_func = dejavu_hook(self_hook());
         dejavu::hooks::strong_certification_hook cert_hook(graph, &hook_func);
         //graph.dump_dimacs("graph_binary.dimacs");
         d.set_prefer_dfs(dejavu_prefer_dfs);
         d.set_print(dejavu_print);
+        d.set_limit_budget(dejavu_backtracking_limit);
+        d.set_limit_schreier_support(absolute_support_limit);
         orbits_graph.reset();
         orbits.reset();
+        std::clog << "c\t dejavu (support_limit=" << absolute_support_limit*4/1024.0/1024.0 << "MB, budget_limit=" <<
+                     dejavu_backtracking_limit << ")";
         d.automorphisms(graph.get_sgraph(), remainder_col.vertex_to_col, cert_hook.get_hook());
+        if (d.get_reached_limit()) std::clog << " exceeded limit";
         //d.automorphisms(graph.get_sgraph(), graph.get_coloring(), test_hook.get_hook());
     }
 
@@ -553,6 +568,23 @@ public:
         }
     };
 
+    void probe_base_length() {
+        if (probed_base_length <= 0) {
+            dejavu::coloring test_col;
+            test_col.copy_any(&save_col);
+            dejavu::ir::controller ir_controller(&ref, &test_col);
+            for (int v = 0; v < save_graph.v_size; ++v){
+                const int v_col = ir_controller.c->vertex_to_col[v];
+                const int v_col_size = ir_controller.c->ptn[v_col] + 1;
+                if (v_col_size >= 2) {
+                    ir_controller.move_to_child(&save_graph, v);
+                }
+                if(ir_controller.c->cells >= save_graph.v_size) break;
+            }
+            probed_base_length = ir_controller.get_base_pos();
+        }
+    }
+
     /**
      * Checks whether the group contains orbits exhibiting a Johnson action, and adds appropriate breaking
      * constraints to the predicate \p sbp. On further orbits, the Johnson action is accepted on blocks of the orbits.
@@ -563,14 +595,25 @@ public:
      */
     void detect_johnson_arity2(cnf& formula, predicate& sbp, int limit = -1) {
         std::clog << "c\t probe for Johnson action (limit=" << limit << ")" << std::endl;
+        probe_base_length();
+
+        // skip special detection for shallow groups
+        if(probed_base_length < 4*log2(orbit_list.size()) && orbit_list.size() > 10000) return;
 
         for(int i = 0; i < static_cast<int>(orbit_list.size()); ++i) {
             if(limit >= 0 && i >= limit) return;
             if(orbit_handled.get(orbit_list[i] )) continue;
             int anchor_vertex = orbit_list[i];
             if(orbit_vertices[anchor_vertex].size() < 28) continue;
-            std::vector<int> orbit = orbit_vertices[anchor_vertex];
 
+            // check if orbit size is n choose 2, for some n
+            int j = 7;
+            while((j * (j-1)) / 2 < orbit_vertices[anchor_vertex].size()) j += 1;
+            if ((j * (j-1)) / 2 != orbit_vertices[anchor_vertex].size()) continue;
+
+            // check if probed base length is plausible
+            if(probed_base_length < j-2) continue;
+            std::vector<int> orbit = orbit_vertices[anchor_vertex];
 
             bool potential_johnson = true;
             dejavu::coloring test_col;
@@ -936,8 +979,13 @@ public:
      * @param formula The given CNF formula.
      * @param sbp The predicate to which the double-lex constraint is added.
      */
-    void detect_row_column_symmetry(cnf& formula, predicate& sbp, int limit = -1) {
-        std::clog << "c\t probe for row-column symmetry (limit=" << limit << ")" << std::endl;
+    void detect_row_column_symmetry(cnf& formula, predicate& sbp, int limit = -1, long split_limit = -1) {
+        std::clog << "c\t probe for row-column symmetry (limit=" << limit <<
+                     ", splits=" << split_limit/1000.0/1000.0 <<"M)" << std::endl;
+
+
+        // skip special detection for shallow groups
+        if(probed_base_length < 4*log2(orbit_list.size()) && orbit_list.size() > 10000) return;
 
         std::vector<int> in_row; // maps vertices to representative in column of anchor_vertex
         std::vector<int> in_column; // maps vertices to representative in row of anchor_vertex
@@ -959,9 +1007,13 @@ public:
             if(limit >= 0 && i >= limit) return;
             if(orbit_handled.get(orbit_list[i] )) continue;
             const int anchor_vertex = orbit_list[i];
+            if (split_limit >= 0 && initial_split_counter > split_limit) break;
             if(tested.get(sat_to_graph(-graph_to_sat(anchor_vertex)))) continue; // skip if we've tested negation
             tested.set(anchor_vertex);
             if(orbit_vertices[anchor_vertex].size() < 6) continue;
+            if(probed_base_length < floor(2*(sqrt(orbit_vertices[anchor_vertex].size())-1))) {
+                continue;
+            }
             orbit = orbit_vertices[anchor_vertex];
 
             // anchor vertex is represented by itself
@@ -971,6 +1023,8 @@ public:
             // individualize the anchor vertex
             while(ir_controller.get_base_pos() > 0) ir_controller.move_to_parent();
             ir_controller.move_to_child(&save_graph, anchor_vertex);
+            initial_split_counter += ir_controller.get_number_of_splits();
+
             //const int init_color = dejavu::ir::refinement::individualize_vertex(&test_col, anchor_vertex);
             //ref.refine_coloring(&save_graph, &test_col, init_color);
 
@@ -1037,6 +1091,7 @@ public:
             if(row.size() == 1 || column.size() == 1) {
                 continue;
             }
+
             if(row.size() * column.size() != orbit.size() ||
                largest_remainder_sz != static_cast<int>((row.size()-1)*(column.size()-1)) || num_remainders != 4) {
                 // If not, we repeat the check in the pointwise stabilizer of the anchor vertex...
@@ -1418,6 +1473,8 @@ public:
         // orbit reduction test
         const int anchor_vertex = entire_orbit[0];
         ir_controller.move_to_child(&save_graph, anchor_vertex);
+        initial_split_counter += ir_controller.get_number_of_splits();
+
         bool reduce_orbit = false;
         int  reduce_orbit_to_color = -1;
         int  reduce_orbit_to_color_sz = -1;
@@ -1716,8 +1773,14 @@ public:
      * @param formula The given CNF formula.
      * @param sbp The predicate to which the double-lex constraint is added.
      */
-    void detect_row_symmetry(cnf& formula, predicate& sbp, int limit = -1, std::vector<int>* order_prev = nullptr) {
-        std::clog << "c\t probe for row symmetry (limit=" << limit << ")" << std::endl;
+    void detect_row_symmetry(cnf& formula, predicate& sbp, int limit = -1, long split_limit = -1,
+                             std::vector<int>* order_prev = nullptr) {
+        std::clog << "c\t probe for row symmetry (limit=" << limit << ", splits=" << split_limit/1000.0/1000.0 <<"M)" << std::endl;
+
+
+
+        // skip special detection for shallow groups
+        if(probed_base_length < 4*log2(orbit_list.size()) && orbit_list.size() > 10000) return;
 
         dejavu::coloring test_col;
         test_col.copy_any(&save_col);
@@ -1728,9 +1791,13 @@ public:
         int i = 0;
         for(int anchor_vertex : orbit_list) {
             if(limit >= 0 && i >= limit) return;
+            if(split_limit >= 0 && initial_split_counter > split_limit) return;
             ++i;
             if(orbit_handled.get(anchor_vertex)) continue;
             if(row_touched_size[anchor_vertex] == static_cast<int>(orbit_vertices[anchor_vertex].size())) continue;
+            if(probed_base_length < orbit_vertices[anchor_vertex].size()/2) {
+                continue;
+            }
             std::vector<int> entire_orbit = orbit_vertices[anchor_vertex];
             detect_row_symmetry_orbit(formula, sbp, entire_orbit, ir_controller);
         }
@@ -2246,7 +2313,7 @@ public:
             return left.second < right.second;
         });
 
-        for(const auto [lit, occ] : literal_occurence) {
+        for(const auto& [lit, occ] : literal_occurence) {
             if(occ >= 1) // if literal does not occur at all, no need to add it
                 sbp.add_to_global_order(lit);
         }
@@ -2271,6 +2338,8 @@ public:
     dejavu::big_number group_size() {
         return d.get_automorphism_group_size();
     }
+
+    group_analyzer(long set_absolute_support_limit = -1) : absolute_support_limit(set_absolute_support_limit) {};
 
     ~group_analyzer() {
         for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
