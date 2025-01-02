@@ -1,4 +1,4 @@
-// Copyright 2024 Markus Anders
+// Copyright 2025 Markus Anders
 // This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
@@ -8,7 +8,6 @@
 #define SATSUMA_VERSION_MAJOR 1
 #define SATSUMA_VERSION_MINOR 2
 
-#include <utility>
 #include "dejavu/dejavu.h"
 #include "cnf.h"
 #include "cnf2wl.h"

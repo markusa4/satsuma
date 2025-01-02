@@ -1,7 +1,8 @@
-// Copyright 2024 Markus Anders
+// Copyright 2025 Markus Anders
 // This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
+#include <cassert>
 #include <iostream>
 #include <algorithm>
 #include <random>

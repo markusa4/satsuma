@@ -1,4 +1,4 @@
-// Copyright 2024 Markus Anders
+// Copyright 2025 Markus Anders
 // This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
@@ -32,8 +32,8 @@ class cnf {
     int removed_duplicate_clauses = 0;
 
     // auxiliary data structures used for methods
-    dejavu::markset test_used;
-    dejavu::markset support_test;
+    dejavu::ds::markset test_used;
+    dejavu::ds::markset support_test;
     std::vector<int> need_to_test_clauses;
     std::vector<int> test_clause;
     std::vector<std::pair<int, int>> add_pairs;

@@ -1,8 +1,6 @@
-// Copyright 2024 Markus Anders
+// Copyright 2025 Markus Anders
 // This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
-
-#include <ranges>
 
 #include "cnf.h"
 #include "dejavu/dejavu.h"
@@ -613,8 +611,8 @@ public:
 
             // check if orbit size is n choose 2, for some n
             int j = 7;
-            while((j * (j-1)) / 2 < orbit_vertices[anchor_vertex].size()) j += 1;
-            if ((j * (j-1)) / 2 != orbit_vertices[anchor_vertex].size()) continue;
+            while((j * (j-1)) / 2 < static_cast<int>(orbit_vertices[anchor_vertex].size())) j += 1;
+            if ((j * (j-1)) / 2 != static_cast<int>(orbit_vertices[anchor_vertex].size())) continue;
 
             // check if probed base length is plausible
             if(probed_base_length < j-2) continue;
@@ -1801,7 +1799,7 @@ public:
             ++i;
             if(orbit_handled.get(anchor_vertex)) continue;
             if(row_touched_size[anchor_vertex] == static_cast<int>(orbit_vertices[anchor_vertex].size())) continue;
-            if(probed_base_length < orbit_vertices[anchor_vertex].size()/2) {
+            if(probed_base_length < static_cast<int>(orbit_vertices[anchor_vertex].size())/2) {
                 continue;
             }
             std::vector<int> entire_orbit = orbit_vertices[anchor_vertex];
@@ -2263,7 +2261,7 @@ public:
             if(!generators_intersect(aw2, aw)) continue;
 
             // make a random element
-            constexpr int word_length = 9;
+            constexpr int word_length = 9; // 9
             for(int k = 0; k < word_length; ++k) {
                 aw3.reset();
                 const int h = rng() % limit;
@@ -2304,26 +2302,46 @@ public:
 
     void finalize_break_order(cnf& formula, predicate& sbp) {
         // we specify a literal order
-        std::vector<std::pair<int, int>> literal_occurence;
-        for(int i = 0; i < 2*formula.n_variables(); ++i) literal_occurence.emplace_back(i, 0);
+        std::vector<std::pair<int, int>> variable_occurence;
+        std::vector<int> literal_to_occurence;
+        literal_to_occurence.resize(2*formula.n_variables());
+
         for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
             aw.reset();
             generators[j]->load(aw);
 
             for(int k = 0; k < aw.nsupp(); ++k) {
                 const int lit = aw.supp()[k];
-                ++literal_occurence[lit].second;
+                ++literal_to_occurence[lit];
             }
         }
+        for(int i = 0; i < 2*formula.n_variables(); i += 2)
+            variable_occurence.emplace_back(i, literal_to_occurence[i]);
 
         // heuristic: least-used literals first
-        std::sort(literal_occurence.begin(), literal_occurence.end(), [](auto &left, auto &right) {
-            return left.second < right.second;
+        std::sort(variable_occurence.begin(), variable_occurence.end(), [](auto &left, auto &right) {
+            return (left.second < right.second) || (left.second == right.second && left.first < right.first);
         });
 
-        for(const auto& [lit, occ] : literal_occurence) {
-            if(occ >= 1) // if literal does not occur at all, no need to add it
-                sbp.add_to_global_order(lit);
+        for(const auto& [lit, occ] : variable_occurence) {
+            if(occ == 0) continue;
+
+            // if literal does not occur at all, no need to add it
+            int heuristic_polarity = lit;
+
+            // prefer positive literal, if both occur the same number of times
+            if (formula.literal_to_number_of_clauses(graph_to_sat(lit)) ==
+                formula.literal_to_number_of_clauses(-graph_to_sat(lit))) {
+                heuristic_polarity = std::min(lit, graph_negate(lit));
+            }
+
+            // prefer literal that occurs more often in formula
+            if (formula.literal_to_number_of_clauses(graph_to_sat(lit)) <
+                formula.literal_to_number_of_clauses(-graph_to_sat(lit))) {
+                heuristic_polarity = graph_negate(lit);
+            }
+
+            sbp.add_to_global_order(heuristic_polarity);
         }
 
         sbp.finalize_order();
