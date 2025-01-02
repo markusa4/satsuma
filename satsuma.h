@@ -160,9 +160,11 @@ namespace satsuma {
                 if(optimize_generators) {
                     sw.start();
                     (*log) << "c\n";
+                    opt_conjugate_limit = std::max(opt_conjugate_limit, 3*5*symmetries.group_size().exponent / std::max(1, symmetries.n_orbits()/2));
                     (*log) << "c optimize generators (opt_passes="
-                           << opt_optimize_passes << ", conjugate_limit=" << opt_addition_limit << ")" << std::endl;
-                    symmetries.optimize_generators(opt_optimize_passes, opt_addition_limit, opt_conjugate_limit,
+                           << opt_optimize_passes << ", conjugate_limit=" << opt_conjugate_limit << ")" << std::endl;
+                    symmetries.optimize_generators(opt_optimize_passes, opt_addition_limit, 
+                                                   opt_conjugate_limit,
                                                    opt_reopt);
                     const double t_optimize_gens = sw.stop();
                     (*log) << "c\t " << "(" << t_optimize_gens << "ms)" << std::endl;

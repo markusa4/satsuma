@@ -2243,30 +2243,36 @@ public:
             std::clog << "c\t ran it=" << k << ", +gens=" << additions << " " << std::endl;
         }
 
+        constexpr int dense_support_limit = 32000;
+
         // add generators by conjugation
         additions = 0;
+        int equal_occured = 0;
+        int extra_word_length = 0;
         int limit = static_cast<int>(generators.size());
         for (int l = 0; l < conjugate_limit; ++l) {
             // give up early if not successful
             if(l == 32 && additions == 0) break;
-
+            // if(l == 32 && additions > 0 && equal_occured > 10) extra_word_length = 5;
+            
             const int conj_j = good_support_gens[rng() % good_support_gens.size()];
 
             aw.reset();
             generators[conj_j]->load(aw);
             //std::clog << "from:" << std::endl;
             //print_automorphism(domain_size, aw.p(), aw.nsupp(), aw.supp());
+            
+            if(l == 0 || aw2.nsupp() > dense_support_limit) {
+                const int j = rng() % limit;
+                if(j == conj_j) continue;
 
-            const int j = rng() % limit;
-            if(j == conj_j) continue;
-
-            aw2.reset();
-            generators[j]->load(aw2);
-            if(!generators_intersect(aw2, aw)) continue;
-
+                aw2.reset();
+                generators[j]->load(aw2);
+                //if(!generators_intersect(aw2, aw)) continue;
+            }
             // make a random element
-            constexpr int word_length = 9; // 9
-            for(int k = 0; k < word_length; ++k) {
+            constexpr int word_length = 15; // 9
+            for(int k = 0; k < word_length + extra_word_length; ++k) {
                 aw3.reset();
                 const int h = rng() % limit;
                 const int pwr = 1 + (rng() % power_limit);
@@ -2288,6 +2294,7 @@ public:
                 equal = aw.p()[v] == aw3.p()[v];
             }
 
+            equal_occured += equal;
             if(equal) continue;
 
             additions += 1;
@@ -2356,7 +2363,9 @@ public:
         //for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
 
         // now output breaking constraints for generators
-        for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
+        // for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
+        // we start at the back since those are conjugated generators, hence potentially good ones
+        for(int j = generators.size()-1; j >= 0; --j) {
             aw.reset();
             generators[j]->load(aw);
             sbp.add_lex_leader_predicate(aw, sbp.get_global_order(), depth);
