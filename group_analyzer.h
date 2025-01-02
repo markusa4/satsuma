@@ -2262,13 +2262,13 @@ public:
             //std::clog << "from:" << std::endl;
             //print_automorphism(domain_size, aw.p(), aw.nsupp(), aw.supp());
             
-            if(l == 0 || aw2.nsupp() > dense_support_limit) {
+            if(l == 0 || aw2.nsupp() == 0 || aw2.nsupp() > dense_support_limit) {
                 const int j = rng() % limit;
                 if(j == conj_j) continue;
 
                 aw2.reset();
                 generators[j]->load(aw2);
-                //if(!generators_intersect(aw2, aw)) continue;
+                if(!generators_intersect(aw2, aw)) continue;
             }
             // make a random element
             constexpr int word_length = 15; // 9
@@ -2365,10 +2365,11 @@ public:
         // now output breaking constraints for generators
         // for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
         // we start at the back since those are conjugated generators, hence potentially good ones
+        
         for(int j = generators.size()-1; j >= 0; --j) {
             aw.reset();
             generators[j]->load(aw);
-            sbp.add_lex_leader_predicate(aw, sbp.get_global_order(), depth);
+            sbp.add_lex_leader_predicate(aw, sbp.get_global_order(), std::max(depth-constraints_added, 3));
             ++constraints_added;
         }
         return constraints_added;
