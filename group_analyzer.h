@@ -198,6 +198,7 @@ public:
         dejavu::static_graph graph;
         graph.initialize_graph(domain_size_graph, total_edges);
         int unused_color = 2 + use_variable_vertex;
+        int unused_variables = 0;
 
         // vertices for literals
         for(int i = 1; i < formula.n_variables() + 1; ++i) {
@@ -214,6 +215,7 @@ public:
             if(lp_uses == 0 && ln_uses == 0) {
                 graph.add_vertex(unused_color++, lp_uses + 1);
                 graph.add_vertex(unused_color++, ln_uses + 1);
+                ++unused_variables;
             } else {
                 graph.add_vertex(0, lp_uses + 1);
                 graph.add_vertex(0, ln_uses + 1);
@@ -358,6 +360,8 @@ public:
         dejavu::ds::worklist vertex_to_orbit(domain_size_graph);
         for(int i = 0; i < domain_size_graph; ++i) vertex_to_orbit[i] = orbits_graph.find_orbit(i);
         save_graph.initialize_coloring(&save_col, vertex_to_orbit.get_array());
+
+        // std::clog << "unused_variables=" << unused_variables << std::endl;
     }
 
     int n_orbits() {
@@ -612,7 +616,7 @@ public:
             // check if orbit size is n choose 2, for some n
             int j = 7;
             while((j * (j-1)) / 2 < static_cast<int>(orbit_vertices[anchor_vertex].size())) j += 1;
-            if ((j * (j-1)) / 2 != static_cast<int>(orbit_vertices[anchor_vertex].size())) continue;
+            if((j * (j-1)) / 2 != static_cast<int>(orbit_vertices[anchor_vertex].size())) continue;
 
             // check if probed base length is plausible
             if(probed_base_length < j-2) continue;
@@ -622,8 +626,8 @@ public:
             dejavu::coloring test_col;
             test_col.copy_any(&save_col);
 
-             int johnson_color = save_col.vertex_to_col[anchor_vertex];
-             int johnson_color_sz = save_col.ptn[johnson_color] + 1;
+            int johnson_color    = save_col.vertex_to_col[anchor_vertex];
+            int johnson_color_sz = save_col.ptn[johnson_color] + 1;
 
             int imaginary_domain_cnt = 0;
             std::vector<std::vector<int>> models_subset;

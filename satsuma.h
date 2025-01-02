@@ -46,6 +46,7 @@ namespace satsuma {
         // routines
         bool optimize_generators = true;
         bool preprocess_cnf      = false;
+        bool preprocess_cnf_subsume = false;
         bool hypergraph_macros   = false;
         bool binary_clauses      = false;
 
@@ -308,6 +309,11 @@ namespace satsuma {
             dejavu_prefer_dfs = prefer_dfs;
         }
 
+        void set_preprocess_cnf_subsume(bool preprocessCNFsubsume) {
+            preprocess_cnf_subsume = preprocessCNFsubsume;
+        }
+
+
         void set_preprocess_cnf(bool preprocessCNF) {
             preprocess_cnf = preprocessCNF;
         }
@@ -370,9 +376,12 @@ namespace satsuma {
                 // propagate unit again
                 unit_propagations += formula.propagate();
 
+                // subsumption
+                int subsumed = 0;
+                if(preprocess_cnf_subsume) subsumed = formula.mark_subsumed_clauses();
                 const double t_unit = sw.stop();
                 if(my_profiler) my_profiler->add_result("unit", t_unit);
-                (*log) << "c\t -units=" << unit_propagations << ", -pures=" << pure_literal_num << " (" << t_unit << "ms)" << std::endl;
+                (*log) << "c\t -units=" << unit_propagations << ", -pures=" << pure_literal_num << ", -subsumed=" << subsumed << " (" << t_unit << "ms)" << std::endl;
             }
 
             // generate symmetry breaking predicates

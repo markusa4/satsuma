@@ -6,6 +6,7 @@
 #define SATSUMA_CNF_H
 
 #include <string>
+#include "dejavu/groups.h"
 #include "tsl/robin_set.h"
 #include "utility.h"
 #include "cnf2wl.h"
@@ -28,7 +29,7 @@ class cnf {
     std::vector<std::vector<int>>    variable_used_list;
 
     // statistics
-    int number_of_variables = 0;
+    int number_of_variables       = 0;
     int removed_duplicate_clauses = 0;
 
     // auxiliary data structures used for methods

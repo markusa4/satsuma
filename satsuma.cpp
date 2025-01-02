@@ -181,6 +181,8 @@ int commandline_mode(int argc, char **argv) {
             satsuma_preprocessor.set_optimize_generators(false);
         } else if(arg == "__PREPROCESS_CNF") {
             satsuma_preprocessor.set_preprocess_cnf(true);
+        } else if(arg == "__PREPROCESS_CNF_SUBSUME") {
+            satsuma_preprocessor.set_preprocess_cnf_subsume(true);
         } else if(arg == "__HYPERGRAPH_MACROS") {
             satsuma_preprocessor.set_hypergraph_macros(true);
         } else if(arg == "__BINARY_CLAUSES") {

@@ -9,6 +9,7 @@
 #include "utility.h"
 #include "dejavu/ds.h"
 #include <charconv>
+#include <bitset> 
 
 class cnf2wl {
     std::vector<std::pair<int, int>> clauses_pt;
@@ -22,12 +23,14 @@ class cnf2wl {
     int number_of_variables = 0;
     int units_applied = 0;
     int redundant_removed = 0;
+    int subsumptions_found = 0;
     dejavu::ds::markset in_units;
     std::vector<int>    units;
 
     dejavu::ds::markset clause_satisfied;
     dejavu::ds::markset found_literal;
     dejavu::ds::markset test_redundant;
+    dejavu::ds::markset test_for_subsumption;
 
 public:
     void reserve(int n, int m) {
@@ -40,6 +43,7 @@ public:
         assignment.resize(2*n);
         found_literal.initialize(2*n);
         test_redundant.initialize(2*n);
+        test_for_subsumption.initialize(m);
 
         clause_satisfied.initialize(m);
         in_units.initialize(2*n);
@@ -53,6 +57,91 @@ public:
                 if(assigned(lit) == 0) found_literal.set(sat_to_graph(lit));
             }
         }
+    }
+
+    #define HASH0(x) (abs((x*417) % 63 + x>0?1:0))
+
+    unsigned long clause_signature(int cl) {
+        unsigned long sig = 0;
+        for(int i = 0; i < clause_size(cl); ++i) {
+            const int lit = literal_at_clause_pos(cl, i);
+            if(assigned(lit) != 0) continue;
+            const int mv  = HASH0(lit);
+            unsigned long sigmv = 1 << mv;
+            sig = sig | sigmv;
+        }
+        return sig;
+    }
+
+
+    int mark_subsumed_clauses() {
+        constexpr int subsume_size_limit_small = 16;
+        constexpr int subsume_size_limit_big   = 1024;
+        constexpr int max_used_list_size = 64;
+
+        std::vector<unsigned long> signatures;
+        signatures.reserve(n_clauses());
+
+        for(int i = 0; i < n_clauses(); ++i) {
+            signatures.push_back(clause_signature(i));
+        }
+
+        std::vector<int> test_clauses;
+
+        for(int i = 0; i < n_clauses(); ++i) {
+            test_redundant.reset();
+            if(clause_satisfied.get(i)) continue;
+            if(clause_size(i) > subsume_size_limit_small) continue;
+            test_for_subsumption.reset();
+            test_clauses.clear();
+
+            int clause_compare_size = 0;
+
+            for (int j = 0; j < clause_size(i); ++j) {
+                const int lit = sat_to_graph(literal_at_clause_pos(i, j));
+                if(assigned(graph_to_sat(lit)) != 0) continue;
+                ++clause_compare_size;
+                test_redundant.set(lit);
+                if(literal_used_list[lit].size() > max_used_list_size) continue;
+                for(int used = 0; used < literal_used_list[lit].size(); ++used) {
+                    const int cl = literal_used_list[lit][used];
+                    if(clause_size(cl) > subsume_size_limit_big) continue;
+                    if(!test_for_subsumption.get(cl)) {
+                        test_for_subsumption.set(cl);
+                        test_clauses.push_back(cl);
+                    }
+                }
+            }
+
+            for(const auto i2 : test_clauses) {
+                if(i == i2) continue;
+                if(clause_size(i2) <= clause_size(i)) continue;
+                if(clause_satisfied.get(i)) continue;
+                //if(clause_size(i2) > subsume_size_limit) continue;
+                
+                // hash trick
+                const std::bitset<64> sig_diff = (signatures[i] & (~signatures[i2]));
+                if(sig_diff.count() != 0) continue;
+
+                // actual test
+                bool potential_subsume = true;
+                int  literals_found = 0;
+                for (int j = 0; j < clause_size(i2); ++j) {
+                    if(assigned(literal_at_clause_pos(i2, j)) != 0) continue;
+                    if(test_redundant.get(sat_to_graph(literal_at_clause_pos(i2, j)))) {
+                        ++literals_found;
+                    }
+                }
+
+                // check if success
+                if(literals_found == clause_size(i)) {
+                    ++subsumptions_found;
+                    //std::clog << "subsume " << subsumptions_found << " (" << i << "/" << n_clauses() << ")" << std::endl;
+                    clause_satisfied.set(i2);
+                }
+            }
+        }
+        return subsumptions_found;
     }
 
     bool is_literal_marked_used(int lit) {
