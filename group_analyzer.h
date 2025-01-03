@@ -191,7 +191,8 @@ public:
                               - use_binary_graph*hypergraph.binary_clauses
                               + use_variable_vertex*formula.n_variables()
                               - hypergraph.removed_clause_support
-                              + hypergraph.hyperedge_support;
+                              + hypergraph.hyperedge_support
+                              + hypergraph.hyperedge_inner_structure_support;
         int count_edges = 0;
 
         // construct graph
@@ -236,7 +237,7 @@ public:
         int hyperedge_added_support = 0;
         for(int i = 0; i < hypergraph.n_hyperedges(); ++i) {
             //assert(hypergraph.hyperedge_list[i].size() == 3);
-            graph.add_vertex(3+hypergraph.hyperedge_color[i], hypergraph.hyperedge_list[i].size());
+            graph.add_vertex(3+hypergraph.hyperedge_color[i], hypergraph.hyperedge_list[i].size() + hypergraph.hyperedge_to_extra_degree(i));
             hyperedge_added_support += hypergraph.hyperedge_list[i].size();
         }
         assert(hyperedge_added_support == hypergraph.hyperedge_support);
@@ -321,6 +322,11 @@ public:
                 ++count_edges;
                 graph.add_edge(l_to_vertex, hyperedge_start+i);
             }
+        }
+
+
+        for(const auto& [h1, h2] : hypergraph.hyperedge_inner_structure) {
+            graph.add_edge(hyperedge_start + h1, hyperedge_start + h2);
         }
 
         if(out_graph) graph.dump_dimacs(filename);
@@ -2360,16 +2366,14 @@ public:
 
     int add_lex_leader_for_generators(cnf& formula, predicate& sbp, int depth = 50) {
         int constraints_added = 0;
-        //for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
 
         // now output breaking constraints for generators
         // for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
         // we start at the back since those are conjugated generators, hence potentially good ones
-        
         for(int j = generators.size()-1; j >= 0; --j) {
             aw.reset();
             generators[j]->load(aw);
-            sbp.add_lex_leader_predicate(aw, sbp.get_global_order(), std::max(depth-constraints_added, 3));
+            sbp.add_lex_leader_predicate(aw, sbp.get_global_order(), depth);
             ++constraints_added;
         }
         return constraints_added;

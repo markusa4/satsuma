@@ -92,10 +92,10 @@ namespace satsuma {
             if(hypergraph_macros) {
                 sw.start();
                 (*log) << "c\n";
-                (*log) << "c apply hypergraph macros";
+                (*log) << "c apply hyperstructure macros";
                 hypergraph.hypergraph_reduction();
                 const double t_hypergraph = sw.stop();
-                if(my_profiler) my_profiler->add_result("hypergraph_macros", t_hypergraph);
+                if(my_profiler) my_profiler->add_result("hyperstructure_rewrite", t_hypergraph);
             }
 
             // transform the formula into a graph and apply color refinement to approximate orbits

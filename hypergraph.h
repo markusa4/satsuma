@@ -6,6 +6,7 @@
 #define SATSUMA_HYPERGRAPH_H
 
 #include "cnf.h"
+#include "tsl/robin_map.h"
 
 namespace satsuma {
     class hypergraph_wrapper {
@@ -20,12 +21,16 @@ namespace satsuma {
         cnf& wrapped_formula;
         std::vector<std::vector<int>> hyperedge_list;
         std::vector<int>              hyperedge_color;
+        std::vector<std::pair<int, int>> hyperedge_inner_structure;
+        std::vector<int>                 hyperedge_inner_degree;
+
         int binary_clauses     = 0;
         int ternary_clauses    = 0;
 
         int removed_clauses = 0;
         int removed_clause_support = 0;
         int hyperedge_support = 0;
+        int hyperedge_inner_structure_support = 0;
 
         hypergraph_wrapper(cnf &formula) : wrapped_formula(formula) {
             // initialize trivial hypergraph wrapper (which does not change the underlying formula)
@@ -62,19 +67,46 @@ namespace satsuma {
             return literal_to_removed[sat_to_graph(literal)];
         }
 
+        int hyperedge_to_extra_degree(int hyperedge) {
+            return hyperedge_inner_degree[hyperedge];
+        }
+
         //int literal_to_number_of_ternary_clauses(int literal) {
         //    return literal_to_ternary_clauses[sat_to_graph(literal)];
         //}
 
 
-        void add_hyperedge(std::vector<int> hyperedge, int color) {
+        int add_hyperedge(std::vector<int> hyperedge, int color) {
             for(auto& l : hyperedge) {
                 ++literal_to_hyperedges[sat_to_graph(l)];
             }
             hyperedge_support += hyperedge.size();
             hyperedge_list.push_back(hyperedge);
             hyperedge_color.push_back(color);
+            hyperedge_inner_degree.push_back(0);
+
+            return hyperedge_list.size() - 1;
         }
+
+        void add_to_hyperedge(int hyperedge, int add_literal) {
+            ++literal_to_hyperedges[sat_to_graph(add_literal)];
+            hyperedge_list[hyperedge].push_back(add_literal);
+            ++hyperedge_support;
+        }
+
+        int add_hyperedge(std::vector<int> hyperedge, std::vector<int> inner_structure, int color) {
+            const int myself = add_hyperedge(hyperedge, color);
+            for (auto& h : inner_structure) {
+                ++hyperedge_inner_degree[h];
+                ++hyperedge_inner_degree[myself];
+                hyperedge_inner_structure.push_back({h, myself});
+                hyperedge_inner_structure_support += 1;
+            }
+
+            return myself;
+        }
+
+
 
         void remove_clause(int i) {
             clause_tombstone[i] = true;
@@ -103,209 +135,138 @@ namespace satsuma {
         }
 
         void hypergraph_reduction() {
-            dejavu::groups::orbit orbits2(wrapped_formula.n_variables()*2);
+            // dejavu::groups::orbit orbits2(wrapped_formula.n_variables()*2);
             literal_iso_inv.resize(wrapped_formula.n_variables()*2);
+            std::vector<int>  incident_binary;
+            std::vector<int> incident_ternary;
+            incident_binary.resize(wrapped_formula.n_variables()*2);
+            incident_ternary.resize(wrapped_formula.n_variables()*2);
             tsl::robin_set<std::pair<int, int>, pair_hash> clause_tombstone2;
+            tsl::robin_map<std::pair<int, int>, int, pair_hash> count_pairs_in_triples;
 
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
                 if(wrapped_formula.clause_size(i) == 2) {
-                    orbits2.combine_orbits(sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 0)),
-                                          sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 1)));
+                    ++incident_binary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 0))];
+                    ++incident_binary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 1))];
+
+                }
+                if(wrapped_formula.clause_size(i) == 2) {
+                    ++incident_ternary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 0))];
+                    ++incident_ternary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 1))];
+                    ++incident_ternary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 2))];
                 }
             }
-            std::clog << " (binary=" << binary_clauses << ", ternary=" << ternary_clauses << ")" << std::endl;
 
-            for(int i = 0; i < 2*wrapped_formula.n_variables(); ++i) {
-                literal_iso_inv[i] = orbits2.orbit_size(i);
+            int no_binary = 0;
+            for(int i = 0; i < 2*wrapped_formula.n_variables(); i+=2) {
+                if(incident_binary[i] == 0 && incident_binary[i+1] == 0) ++no_binary;
             }
+            std::clog << "not incident to binary: " << no_binary << std::endl;
 
-            std::vector<std::vector<int>> vertex_to_orbit2;
-            vertex_to_orbit2.resize(2*wrapped_formula.n_variables());
+            std::clog << " (sz2=" << binary_clauses << ", sz3=" << ternary_clauses << ")" << std::endl;
 
-            // orbit_collect
-            for(int i = 0; i < 2*wrapped_formula.n_variables(); ++i) {
-                //if (!orbits.represents_orbit(i)) continue;
-                if (orbits2.orbit_size(i) < 3) continue;
-                vertex_to_orbit2[orbits2.find_orbit(i)].push_back(i);
-            }
-
-            // orbit_replace
-            clause_tombstone2.reserve(binary_clauses);
-            for(int i = 0; i < 2*wrapped_formula.n_variables(); ++i) {
-                if (vertex_to_orbit2[i].size() < 3) continue;
-
-                //std::clog << vertex_to_orbit[i].size() << std::endl;
-
-                bool can_replace = true;
-                for (int j = 0; j < vertex_to_orbit2[i].size(); ++j) {
-                    int l1 = graph_to_sat(vertex_to_orbit2[i][j]);
-                    for (int k = j + 1; k < vertex_to_orbit2[i].size(); ++k) {
-                        int l2 = graph_to_sat(vertex_to_orbit2[i][k]);
-                        std::vector<int> clause = {l1, l2};
-                        std::sort(clause.begin(), clause.end());
-                        can_replace = wrapped_formula.read_db(clause);
-                        if (!can_replace) break;
-                    }
-                    if (!can_replace) break;
-                }
-
-                if (can_replace) {
-                    for (int j = 0; j < vertex_to_orbit2[i].size(); ++j) {
-                        int l1 = graph_to_sat(vertex_to_orbit2[i][j]);
-                        for (int k = j + 1; k < vertex_to_orbit2[i].size(); ++k) {
-                            int l2 = graph_to_sat(vertex_to_orbit2[i][k]);
-                            std::vector<int> clause = {l1, l2};
-                            std::sort(clause.begin(), clause.end());
-                            clause_tombstone2.insert({clause[0],clause[1]});
-                        }
-                    }
-                    std::vector<int> hyperedge;
-                    for (int j = 0; j < vertex_to_orbit2[i].size(); ++j) {
-                        int l1 = graph_to_sat(vertex_to_orbit2[i][j]);
-                        hyperedge.push_back(l1);
-                    }
-                    add_hyperedge(hyperedge, 3);
-                    continue;
-                }
-            }
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
-                if (wrapped_formula.clause_size(i) != 2) continue;
-                const int l1 = wrapped_formula.literal_at_clause_pos(i, 0);
-                const int l2 = wrapped_formula.literal_at_clause_pos(i, 1);
-                if(clause_tombstone2.find({l1, l2}) != clause_tombstone2.end()) remove_clause(i);
+                if (wrapped_formula.clause_size(i) != 3) continue;
+                std::vector<int> clause_at_hand = {wrapped_formula.literal_at_clause_pos(i, 0),
+                                                   wrapped_formula.literal_at_clause_pos(i, 1),
+                                                   wrapped_formula.literal_at_clause_pos(i, 2)};
+                std::sort(clause_at_hand.begin(), clause_at_hand.end());
+                const int l1 = clause_at_hand[0];
+                const int l2 = clause_at_hand[1];
+                const int l3 = clause_at_hand[2];
+
+                count_pairs_in_triples[{l1, l2}] = 0;
+                count_pairs_in_triples[{l2, l3}] = 0;
+                count_pairs_in_triples[{l1, l3}] = 0;
             }
 
             // ternary negation macro
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
                 if (wrapped_formula.clause_size(i) != 3) continue;
-                const int l1 = wrapped_formula.literal_at_clause_pos(i, 0);
-                const int l2 = wrapped_formula.literal_at_clause_pos(i, 1);
-                const int l3 = wrapped_formula.literal_at_clause_pos(i, 2);
-
-                bool canonical = true;
-
-                std::vector<int> orig_clause = {l1, l2, l3};
-                std::vector<int> flips = {};
-                int flips_exist = 0;
-                std::vector<int> test_clause;
-                for(int f1 = 0; f1 <= 1; ++f1) {
-                    for(int f2 = 0; f2 <= 1; ++f2) {
-                        for(int f3 = 0; f3 <= 1; ++f3) {
-                            test_clause = orig_clause;
-                            if(f1 == 1) test_clause[0] = -test_clause[0];
-                            if(f2 == 1) test_clause[1] = -test_clause[1];
-                            if(f3 == 1) test_clause[2] = -test_clause[2];
-                            std::sort(test_clause.begin(), test_clause.end());
-                            if(wrapped_formula.read_db(test_clause)) {
-                                if(test_clause < orig_clause) {
-                                    canonical = false;
-                                }
-
-                                flips_exist += 1;
-                                flips.push_back(f1 + f2 + f3);
-                            }
-                        }
-                    }
-                }
-
-
-                int excluded_negation_symmetry = (iso_inv(l1) != iso_inv(-l1)) +
-                                             (iso_inv(l2) != iso_inv(-l2)) +
-                                             (iso_inv(l3) != iso_inv(-l3));
-
-
-                if(flips_exist == 4 && flips[0] == 0 && flips[1] == 2 && flips[2] == 2 && flips[3] == 2 &&
-                   excluded_negation_symmetry >= 2) {
-                    // CFI gate with fixed flips
-                    remove_clause(i);
-                    if(canonical) {
-                        std::vector<int> hyperedge;
-                        for(int k = 0; k < 3; ++k) {
-                            if (iso_inv(orig_clause[k]) <
-                                iso_inv(-orig_clause[k])) {
-                                hyperedge.push_back(orig_clause[k]);
-                            } else if (iso_inv(-orig_clause[k]) <
-                                    iso_inv(orig_clause[k])) {
-                                hyperedge.push_back(-orig_clause[k]);
-                            } else {
-                                hyperedge.push_back(orig_clause[k]);
-                            }
-                        }
-                        add_hyperedge(hyperedge, 0);
-                    }
-                } else if(flips_exist == 2 && flips[0] == 0 && flips[1] == 3 && excluded_negation_symmetry > 0) {
-                    // full negation flip
-                    remove_clause(i);
-                    if(canonical) {
-                        std::vector<int> canonical_literals;
-                        for(int k = 0; k < 3; ++k) {
-                            if (iso_inv(orig_clause[k]) <
-                                    iso_inv(-orig_clause[k])) {
-                                canonical_literals.push_back(orig_clause[k]);
-                            } else if (iso_inv(-orig_clause[k]) <
-                                    iso_inv(orig_clause[k])) {
-                                canonical_literals.push_back(-orig_clause[k]);
-                            }
-                        }
-                        if ( std::find(orig_clause.begin(), orig_clause.end(), canonical_literals[0]) != orig_clause.end()) {
-                            add_hyperedge(orig_clause, 1);
-                        } else {
-                            add_hyperedge({-orig_clause[0], -orig_clause[1], -orig_clause[2]}, 1);
-                        }
-                    }
-                } else if(flips_exist == 4 && flips[0] == 0 && flips[1] == 2 && flips[2] == 2 && flips[3] == 2 &&
-                          excluded_negation_symmetry == 1) {
-                    /*remove_clause(i);
-                    //std::clog << "CFI_gadget flips exist: " << flips_exist << " excluded_negation_symmetry: "
-                    //          << excluded_negation_symmetry << std::endl;
-                    if(canonical) {
-                        std::vector<int> hyperedge;
-                        for(int k = 0; k < 3; ++k) {
-                            if (iso_inv(orig_clause[k]) <
-                                iso_inv(-orig_clause[k])) {
-                                hyperedge.push_back(orig_clause[k]);
-                            } else if (iso_inv(-orig_clause[k]) <
-                                       iso_inv(orig_clause[k])) {
-                                hyperedge.push_back(-orig_clause[k]);
-                            } else {
-                                hyperedge.push_back(orig_clause[k]);
-                            }
-                        }
-                        add_hyperedge(hyperedge, 0);
-                        ++ternary_negations;
-                    }*/
-                }
-                /*
-                std::clog << "orig: " << std::endl;
-                std::clog << l1 << " " << l2 << " " << l3 << " " << std::endl;
-
-                for(int k = 0; k < 3; ++k) {
-                    std::vector<int> clause1 = {l1, l2, l3};
-                    std::vector<int> clause2 = {l1, l2, l3};
-
-                    const int kf1 = (k+1) % 3;
-                    const int kf2 = (k+2) % 3;
-
-                    clause1[k] = -clause1[k];
-                    clause2[k] = -clause2[k];
-                    clause1[kf1] = -clause1[kf1];
-                    clause2[kf2] = -clause2[kf2];
-
-                    std::clog << clause1[0] << " " << clause1[1] << " " << clause1[2] << " " << std::endl;
-                    std::clog << clause2[0] << " " << clause2[1] << " " << clause2[2] << " " << std::endl;
-
-                    std::sort(clause1.begin(), clause1.end());
-                    std::sort(clause2.begin(), clause2.end());
-
-                    const bool test1 = wrapped_formula.access_clause_db(clause2, false);
-                    const bool test2 = wrapped_formula.access_clause_db(clause1, false);
-
-                    const bool can_replace = test1 && test2;
-                    if(can_replace) can_replace_count += 1;
-                    replace_k = can_replace? k : replace_k;
-                }
-                */
+                std::vector<int> clause_at_hand = {wrapped_formula.literal_at_clause_pos(i, 0),
+                                                   wrapped_formula.literal_at_clause_pos(i, 1),
+                                                   wrapped_formula.literal_at_clause_pos(i, 2)};
+                std::sort(clause_at_hand.begin(), clause_at_hand.end());
+                const int l1 = clause_at_hand[0];
+                const int l2 = clause_at_hand[1];
+                const int l3 = clause_at_hand[2];
+                
+                ++count_pairs_in_triples[{l1, l2}]; 
+                ++count_pairs_in_triples[{l2, l3}]; 
+                ++count_pairs_in_triples[{l1, l3}]; 
             }
+
+            std::vector<std::pair<std::pair<int, int>, int>> uses;
+            tsl::robin_map<std::pair<int, int>, int, pair_hash> pair_to_hyperedge;
+
+            for(const auto& key_value : count_pairs_in_triples) {
+                uses.push_back({key_value.first, key_value.second});
+            }
+
+            std::sort(uses.begin(), uses.end(), [](auto &left, auto &right) {
+                return left.second > right.second;
+            });
+
+            constexpr int min_triple_replace = 8;
+
+
+            if(uses.size() == 0) return;
+
+            const int max_triple = uses[0].second;
+            int triple_reductions = 0;
+            if(max_triple > min_triple_replace) {
+                std::vector<std::pair<int, int>> max_pairs;
+                for(const auto& use : uses) {
+                    if(use.second > min_triple_replace) {
+                        pair_to_hyperedge[use.first] = -1;
+                    }
+                }
+
+                for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
+                    if (wrapped_formula.clause_size(i) != 3) continue;
+                    std::vector<int> clause_at_hand = {wrapped_formula.literal_at_clause_pos(i, 0),
+                                                       wrapped_formula.literal_at_clause_pos(i, 1),
+                                                       wrapped_formula.literal_at_clause_pos(i, 2)};
+                    std::sort(clause_at_hand.begin(), clause_at_hand.end());
+                    const int l1 = clause_at_hand[0];
+                    const int l2 = clause_at_hand[1];
+                    const int l3 = clause_at_hand[2];
+
+                    std::vector<std::pair<int, std::tuple<int, int, int>>> counts = {{count_pairs_in_triples[{l1, l2}], {l1, l2, l3}}, 
+                                                               {count_pairs_in_triples[{l2, l3}], {l2, l3, l1}}, 
+                                                               {count_pairs_in_triples[{l1, l3}], {l1, l3, l2}}};
+
+                    std::sort(counts.begin(), counts.end(), [](auto &left, auto &right) {
+                        return left.first < right.first;
+                    });
+
+                    const int large_triple = counts[2].first;
+                    if(large_triple > min_triple_replace  && counts[1].first != large_triple && 
+                                                      counts[0].first != large_triple) {
+                        const std::pair<int, int> prev_edge = {std::get<0>(counts[2].second),std::get<1>(counts[2].second)};
+
+                        if(pair_to_hyperedge[prev_edge] < 0) {
+                            const int added_hyperedge        = add_hyperedge({prev_edge.first, prev_edge.second}, 3);
+                            const int added_hyperedge_second = add_hyperedge({}, {added_hyperedge}, 4);
+                            pair_to_hyperedge[prev_edge] = added_hyperedge_second;
+                        }
+
+                        ++triple_reductions;
+                        add_to_hyperedge(pair_to_hyperedge[prev_edge], std::get<2>(counts[2].second));
+                        remove_clause(i);
+                    }
+                }
+            }
+            
+            for(int i = 0; i < 2*wrapped_formula.n_variables(); i += 2) {
+                if(incident_ternary[i] + incident_ternary[i+1] > 200) {
+                    std::clog << incident_ternary[i] << ", " << incident_ternary[i+1] << std::endl;
+                }
+            }
+            std::clog << "potential max_triple(" << max_triple << ")reductions: " << triple_reductions << std::endl;
+
+
+
             std::clog << "c\t +hyedge=" << n_hyperedges() << ", +hyedge_sup=" << hyperedge_support << ", -cl=" << removed_clauses
                       << ", -cl_sup=" << removed_clause_support << std::endl;
             //std::clog << "c\t found " << replacement_possible.size() << " [clauses: " << potential_removed_clauses << "] potential hypergraph reductions" << std::endl;
