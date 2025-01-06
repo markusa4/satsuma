@@ -229,9 +229,10 @@ int commandline_mode(int argc, char **argv) {
     if(print) std::clog << "c │      satsuma_version=" << SATSUMA_VERSION_MAJOR << "." << SATSUMA_VERSION_MINOR << ", ";
     if(print) std::clog << "dejavu_version=" << DEJAVU_VERSION_MAJOR << "." << DEJAVU_VERSION_MINOR <<
                         (DEJAVU_VERSION_IS_PREVIEW?"preview":"") << "                   │\n";
-    if(print) std::clog << "c │      Copyright 2025 Markus Anders                              │\n";
+    if(print) std::clog << "c │      (c) 2024-2025 Markus Anders                               │\n";
     if(print) std::clog << "c │      ...based on work with Sofia Brenner, Gaurav Rattan,       │\n" <<
-                           "c │                            Mate Soos, Pascal Schweitzer        │\n";
+                           "c │                            Mate Soos, Pascal Schweitzer        │\n" << 
+                           "c │                            Bart Bogaerts                       │\n";
     if(print) std::clog << "c └────────────────────────────────────────────────────────────────┘" << std::endl;
 
     if (!entered_file) {

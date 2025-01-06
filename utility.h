@@ -2,6 +2,7 @@
 // This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
+#include "dejavu/dejavu.h"
 #include <cassert>
 #include <iostream>
 #include <algorithm>
@@ -123,7 +124,7 @@ public:
     }
 };
 
-void terminate_with_error(std::string error_msg) {
+static void terminate_with_error(std::string error_msg) {
     std::cerr << "c \nc " << error_msg << std::endl;
     exit(1);
 }
@@ -183,7 +184,7 @@ struct any_hash
 
 struct triple_hash {
     inline std::size_t operator()(const std::tuple<int,int,int> & v) const {
-        return 48*get<0>(v)+24*hash32shift(get<1>(v))+hash32shift(get<2>(v));
+        return 48*std::get<0>(v)+24*hash32shift(std::get<1>(v))+hash32shift(std::get<2>(v));
     }
 };
 

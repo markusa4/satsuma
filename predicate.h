@@ -7,6 +7,7 @@
 
 #include <vector>
 #include "proof.h"
+#include <charconv>
 #include "dejavu/dejavu.h"
 #include "utility.h"
 

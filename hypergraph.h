@@ -9,18 +9,22 @@
 #include "tsl/robin_map.h"
 
 namespace satsuma {
+    /**
+     * \brief A class wrapping a CNF formula and describing an augmented graph structure for said CNF.
+     */  
     class hypergraph_wrapper {
-        std::vector<int> literal_to_binary_clauses;
-        std::vector<int> literal_to_ternary_clauses;
-        std::vector<int> literal_to_hyperedges;
-        std::vector<int> literal_to_removed;
-        std::vector<int> literal_iso_inv;
+        std::vector<int>  literal_to_binary_clauses;
+        std::vector<int>  literal_to_ternary_clauses;
+        std::vector<int>  literal_to_hyperedges;
+        std::vector<int>  literal_to_removed;
+        std::vector<int>  literal_iso_inv;
         std::vector<bool> clause_tombstone;
+        std::vector<bool> literal_needs_binary_fix;
 
     public:
-        cnf& wrapped_formula;
-        std::vector<std::vector<int>> hyperedge_list;
-        std::vector<int>              hyperedge_color;
+        cnf& wrapped_formula; /*< the formula wrapped by the graph structure */
+        std::vector<std::vector<int>>    hyperedge_list;
+        std::vector<int>                 hyperedge_color;
         std::vector<std::pair<int, int>> hyperedge_inner_structure;
         std::vector<int>                 hyperedge_inner_degree;
 
@@ -38,6 +42,8 @@ namespace satsuma {
             //literal_to_ternary_clauses.resize(wrapped_formula.n_variables()*2);
             literal_to_hyperedges.resize(wrapped_formula.n_variables()*2);
             literal_to_removed.resize(wrapped_formula.n_variables()*2);
+            literal_needs_binary_fix.resize(wrapped_formula.n_variables()*2);
+
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
                 if(wrapped_formula.clause_size(i) == 2) {
                     literal_to_binary_clauses[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 0))] += 1;
@@ -47,9 +53,6 @@ namespace satsuma {
 
                 if(wrapped_formula.clause_size(i) == 3) {
                     ++ternary_clauses;
-                    //literal_to_ternary_clauses[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 0))] += 1;
-                    //literal_to_ternary_clauses[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 1))] += 1;
-                    //literal_to_ternary_clauses[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 2))] += 1;
                 }
             }
             clause_tombstone.resize(wrapped_formula.n_clauses());
@@ -130,12 +133,20 @@ namespace satsuma {
             unsigned long hash = hash32shift(wrapped_formula.literal_to_number_of_clauses(literal));
             hash = add_to_hash(hash, hash32shift(literal_to_number_of_binary_clauses(literal)));
             //hash = add_to_hash(hash, hash32shift(literal_to_number_of_ternary_clauses(literal)));
-            hash = add_to_hash(hash, hash32shift(literal_iso_inv[sat_to_graph(literal)]));
+            // hash = add_to_hash(hash, hash32shift(literal_iso_inv[sat_to_graph(literal)]));
             return hash;
         }
 
+        bool variable_needs_binary_fix(int variable) {
+            const int lp =  variable;
+            const int ln = -variable;
+            return (literal_needs_binary_fix[sat_to_graph(lp)] || 
+                    literal_needs_binary_fix[sat_to_graph(ln)]);
+        }
+
         void hypergraph_reduction() {
-            // dejavu::groups::orbit orbits2(wrapped_formula.n_variables()*2);
+            constexpr int min_triple_replace = 16;
+
             literal_iso_inv.resize(wrapped_formula.n_variables()*2);
             std::vector<int>  incident_binary;
             std::vector<int> incident_ternary;
@@ -146,24 +157,30 @@ namespace satsuma {
 
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
                 if(wrapped_formula.clause_size(i) == 2) {
-                    ++incident_binary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 0))];
-                    ++incident_binary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 1))];
-
+                    const int l1 = wrapped_formula.literal_at_clause_pos(i, 0);
+                    const int l2 = wrapped_formula.literal_at_clause_pos(i, 1);
+                    if(iso_inv(l1) == iso_inv(l2)) {
+                        literal_needs_binary_fix[sat_to_graph(l1)] = true;
+                        literal_needs_binary_fix[sat_to_graph(l2)] = true;
+                    }
+                    ++incident_binary[sat_to_graph(l1)];
+                    ++incident_binary[sat_to_graph(l2)];
                 }
-                if(wrapped_formula.clause_size(i) == 2) {
+                if(wrapped_formula.clause_size(i) == 3) {
                     ++incident_ternary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 0))];
                     ++incident_ternary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 1))];
                     ++incident_ternary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 2))];
                 }
             }
 
-            int no_binary = 0;
+            int ternary_above_limit = 0;
             for(int i = 0; i < 2*wrapped_formula.n_variables(); i+=2) {
-                if(incident_binary[i] == 0 && incident_binary[i+1] == 0) ++no_binary;
+                ternary_above_limit += incident_ternary[i] > min_triple_replace;
+                ternary_above_limit += incident_ternary[i+1] > min_triple_replace;
             }
-            std::clog << "not incident to binary: " << no_binary << std::endl;
-
             std::clog << " (sz2=" << binary_clauses << ", sz3=" << ternary_clauses << ")" << std::endl;
+
+            if(ternary_above_limit < 2048) return;
 
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
                 if (wrapped_formula.clause_size(i) != 3) continue;
@@ -175,12 +192,16 @@ namespace satsuma {
                 const int l2 = clause_at_hand[1];
                 const int l3 = clause_at_hand[2];
 
-                count_pairs_in_triples[{l1, l2}] = 0;
-                count_pairs_in_triples[{l2, l3}] = 0;
-                count_pairs_in_triples[{l1, l3}] = 0;
+                const bool l1_enough = incident_ternary[sat_to_graph(l1)] > min_triple_replace;
+                const bool l2_enough = incident_ternary[sat_to_graph(l2)] > min_triple_replace;
+                const bool l3_enough = incident_ternary[sat_to_graph(l3)] > min_triple_replace;
+
+                if(l1_enough && l2_enough) count_pairs_in_triples[{l1, l2}] = 0;
+                if(l2_enough && l3_enough) count_pairs_in_triples[{l2, l3}] = 0;
+                if(l1_enough && l3_enough) count_pairs_in_triples[{l1, l3}] = 0;
             }
 
-            // ternary negation macro
+            // count tuples in ternary clauses 
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
                 if (wrapped_formula.clause_size(i) != 3) continue;
                 std::vector<int> clause_at_hand = {wrapped_formula.literal_at_clause_pos(i, 0),
@@ -191,9 +212,13 @@ namespace satsuma {
                 const int l2 = clause_at_hand[1];
                 const int l3 = clause_at_hand[2];
                 
-                ++count_pairs_in_triples[{l1, l2}]; 
-                ++count_pairs_in_triples[{l2, l3}]; 
-                ++count_pairs_in_triples[{l1, l3}]; 
+                const bool l1_enough = incident_ternary[sat_to_graph(l1)] > min_triple_replace;
+                const bool l2_enough = incident_ternary[sat_to_graph(l2)] > min_triple_replace;
+                const bool l3_enough = incident_ternary[sat_to_graph(l3)] > min_triple_replace;
+
+                if(l1_enough && l2_enough) ++count_pairs_in_triples[{l1, l2}]; 
+                if(l2_enough && l3_enough) ++count_pairs_in_triples[{l2, l3}]; 
+                if(l1_enough && l3_enough) ++count_pairs_in_triples[{l1, l3}]; 
             }
 
             std::vector<std::pair<std::pair<int, int>, int>> uses;
@@ -206,9 +231,6 @@ namespace satsuma {
             std::sort(uses.begin(), uses.end(), [](auto &left, auto &right) {
                 return left.second > right.second;
             });
-
-            constexpr int min_triple_replace = 8;
-
 
             if(uses.size() == 0) return;
 
@@ -232,9 +254,14 @@ namespace satsuma {
                     const int l2 = clause_at_hand[1];
                     const int l3 = clause_at_hand[2];
 
-                    std::vector<std::pair<int, std::tuple<int, int, int>>> counts = {{count_pairs_in_triples[{l1, l2}], {l1, l2, l3}}, 
-                                                               {count_pairs_in_triples[{l2, l3}], {l2, l3, l1}}, 
-                                                               {count_pairs_in_triples[{l1, l3}], {l1, l3, l2}}};
+                    const bool l1_enough = incident_ternary[sat_to_graph(l1)] > min_triple_replace;
+                    const bool l2_enough = incident_ternary[sat_to_graph(l2)] > min_triple_replace;
+                    const bool l3_enough = incident_ternary[sat_to_graph(l3)] > min_triple_replace;
+
+                    std::vector<std::pair<int, std::tuple<int, int, int>>> counts = 
+                                                 {{(l1_enough && l2_enough)?count_pairs_in_triples[{l1, l2}]:0, {l1, l2, l3}}, 
+                                                  {(l2_enough && l3_enough)?count_pairs_in_triples[{l2, l3}]:0, {l2, l3, l1}}, 
+                                                  {(l1_enough && l3_enough)?count_pairs_in_triples[{l1, l3}]:0, {l1, l3, l2}}};
 
                     std::sort(counts.begin(), counts.end(), [](auto &left, auto &right) {
                         return left.first < right.first;
@@ -258,18 +285,17 @@ namespace satsuma {
                 }
             }
             
-            for(int i = 0; i < 2*wrapped_formula.n_variables(); i += 2) {
-                if(incident_ternary[i] + incident_ternary[i+1] > 200) {
-                    std::clog << incident_ternary[i] << ", " << incident_ternary[i+1] << std::endl;
-                }
-            }
-            std::clog << "potential max_triple(" << max_triple << ")reductions: " << triple_reductions << std::endl;
+            //for(int i = 0; i < 2*wrapped_formula.n_variables(); i += 2) {
+            //    if(incident_ternary[i] + incident_ternary[i+1] > 200) {
+            //        std::clog << incident_ternary[i] << ", " << incident_ternary[i+1] << std::endl;
+            //    }
+            //}
+            //std::clog << "potential max_triple(" << max_triple << ")reductions: " << triple_reductions << std::endl;
 
 
 
             std::clog << "c\t +hyedge=" << n_hyperedges() << ", +hyedge_sup=" << hyperedge_support << ", -cl=" << removed_clauses
-                      << ", -cl_sup=" << removed_clause_support << std::endl;
-            //std::clog << "c\t found " << replacement_possible.size() << " [clauses: " << potential_removed_clauses << "] potential hypergraph reductions" << std::endl;
+                      << ", -cl_sup=" << removed_clause_support;
         }
 
         void clear() {

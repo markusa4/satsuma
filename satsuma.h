@@ -64,7 +64,7 @@ namespace satsuma {
         // dejavu settings
         bool dejavu_print        = false;
         bool dejavu_prefer_dfs   = false;
-        int  dejavu_budget_limit = -1; // <0 means no limit
+        int  dejavu_budget_limit = -1; // <0 means no limits\
 
         /**
             Compute a symmetry breaking predicate for the given formula.
@@ -84,6 +84,7 @@ namespace satsuma {
                 exit(0);
             }
 
+
             total.start();
 
             if(my_proof) my_proof->header(formula.n_clauses() + formula.n_duplicate_clauses_removed());
@@ -95,6 +96,7 @@ namespace satsuma {
                 (*log) << "c apply hyperstructure macros";
                 hypergraph.hypergraph_reduction();
                 const double t_hypergraph = sw.stop();
+                (*log) << " (" << t_hypergraph << "ms)" << std::endl;
                 if(my_profiler) my_profiler->add_result("hyperstructure_rewrite", t_hypergraph);
             }
 
@@ -350,7 +352,7 @@ namespace satsuma {
                 (*log) << "c preprocess cnf" << std::endl;
                 sw.start();
 
-                // propagate unit ltierals
+                // propagate unit literals
                 int unit_propagations = formula.propagate();
 
                 // collect pure literals
@@ -388,6 +390,7 @@ namespace satsuma {
 
             // generate symmetry breaking predicates
             constexpr bool keep_original_order = true;
+
             (*log) << "c\n";
             (*log) << "c make clause database (keep_order=" << keep_original_order << ")";
             sw.start();

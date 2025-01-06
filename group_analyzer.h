@@ -43,6 +43,8 @@ class group_analyzer {
     long absolute_support_limit = -1;
     long graph_component_size_limit = -1;
 
+
+
     void my_hook(int n, const int* p, int nsupp, const int *supp) {
         orbits_graph.add_automorphism_to_orbit(p, nsupp, supp);
 
@@ -177,9 +179,16 @@ public:
         //const bool use_binary_graph = false;
         std::clog << " (binary_graph=" << use_binary_graph << ")";
 
+        int need_binary_fix = 0;
+        // check how many binary fix vertices do we need
+        for(int i = 1; i <= formula.n_variables(); ++i)
+            need_binary_fix += hypergraph.variable_needs_binary_fix(i);
+
+        // compute number of vertices
         domain_size = 2*formula.n_variables();
         domain_size_graph = 2*formula.n_variables() + formula.n_clauses()
-                            - use_binary_graph*hypergraph.binary_clauses + use_variable_vertex*formula.n_variables()
+                            - use_binary_graph*hypergraph.binary_clauses 
+                            + use_variable_vertex*need_binary_fix
                             - hypergraph.removed_clauses + hypergraph.n_hyperedges();
 
         aw.resize(domain_size);
@@ -187,18 +196,20 @@ public:
         orbits_graph.initialize(domain_size_graph);
         store_helper.initialize(domain_size);
 
+        // compute number of edges
         const int total_edges = formula.n_total_clause_size() + formula.n_variables()
                               - use_binary_graph*hypergraph.binary_clauses
-                              + use_variable_vertex*formula.n_variables()
+                              + use_variable_vertex*need_binary_fix
                               - hypergraph.removed_clause_support
                               + hypergraph.hyperedge_support
                               + hypergraph.hyperedge_inner_structure_support;
         int count_edges = 0;
 
-        // construct graph
+        // now, we construct the graph
         dejavu::static_graph graph;
         graph.initialize_graph(domain_size_graph, total_edges);
         int unused_color = 2 + use_variable_vertex;
+        //int unused_color = 81;
         int unused_variables = 0;
 
         // vertices for literals
@@ -218,7 +229,9 @@ public:
                 graph.add_vertex(unused_color++, ln_uses + 1);
                 ++unused_variables;
             } else {
+                //graph.add_vertex(16 + (lp_uses % 64), lp_uses + 1);
                 graph.add_vertex(0, lp_uses + 1);
+                //graph.add_vertex(16 + (ln_uses % 64), ln_uses + 1);
                 graph.add_vertex(0, ln_uses + 1);
             }
         }
@@ -244,10 +257,11 @@ public:
 
         const int variable_vertex_start = 2 * formula.n_variables() + formula.n_clauses() - hypergraph.removed_clauses
                                           - use_binary_graph*hypergraph.binary_clauses + hypergraph.n_hyperedges();
-        // vertices for binary graph
+        // vertices for binary graph fix
         if(use_variable_vertex) {
-            for (int i = 1; i < formula.n_variables() + 1; ++i) {
-                graph.add_vertex(2, 2);
+            for (int i = 1; i <= formula.n_variables(); ++i) {
+                // only add vertex if required
+                if(hypergraph.variable_needs_binary_fix(i)) graph.add_vertex(2, 2);
             }
         }
 
@@ -256,11 +270,14 @@ public:
         }
 
         // connect literals belonging to the same variable
-        for(int i = 0; i < formula.n_variables(); ++i) {
-            const int vert_lp = 2*i;
-            const int vert_ln = 2*i+1;
-            if(use_variable_vertex) {
-                const int bin_vert = variable_vertex_start + i;
+        int j = 0;
+        for(int i = 1; i <= formula.n_variables(); ++i) {
+            const int vert_lp = sat_to_graph(i);
+            const int vert_ln = sat_to_graph(-i);
+            
+            if(use_variable_vertex && hypergraph.variable_needs_binary_fix(i)) {
+                const int bin_vert = variable_vertex_start + j;
+                ++j;
                 ++count_edges;
                 graph.add_edge(vert_lp, bin_vert);
                 ++count_edges;
@@ -305,8 +322,9 @@ public:
         }
 
         assert(actual_i == formula.n_clauses() - hypergraph.removed_clauses - use_binary_graph*hypergraph.binary_clauses);
-
         assert(hypergraph.n_hyperedges() == hypergraph.hyperedge_list.size());
+
+        // connect literals to hyperedges
         for(int i = 0; i < static_cast<int>(hypergraph.hyperedge_list.size()); ++i) {
             assert(i < hypergraph.hyperedge_list.size());
             assert(hypergraph.hyperedge_list[i].size() < formula.n_variables()*2);
@@ -324,7 +342,7 @@ public:
             }
         }
 
-
+        // connect "hyperedges" to each other
         for(const auto& [h1, h2] : hypergraph.hyperedge_inner_structure) {
             graph.add_edge(hyperedge_start + h1, hyperedge_start + h2);
         }
@@ -367,7 +385,7 @@ public:
         for(int i = 0; i < domain_size_graph; ++i) vertex_to_orbit[i] = orbits_graph.find_orbit(i);
         save_graph.initialize_coloring(&save_col, vertex_to_orbit.get_array());
 
-        // std::clog << "unused_variables=" << unused_variables << std::endl;
+        std::clog << " saved=" << formula.n_variables() - need_binary_fix << std::endl;
     }
 
     int n_orbits() {
@@ -2368,9 +2386,9 @@ public:
         int constraints_added = 0;
 
         // now output breaking constraints for generators
-        // for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
+        for(int j = 0; j < static_cast<int>(generators.size()); ++j) {
         // we start at the back since those are conjugated generators, hence potentially good ones
-        for(int j = generators.size()-1; j >= 0; --j) {
+        //for(int j = generators.size()-1; j >= 0; --j) {
             aw.reset();
             generators[j]->load(aw);
             sbp.add_lex_leader_predicate(aw, sbp.get_global_order(), depth);
