@@ -42,6 +42,7 @@ class group_analyzer {
 
     long absolute_support_limit = -1;
     long graph_component_size_limit = -1;
+    int  dejavu_backtracking_limit = 64;
 
 
 
@@ -385,7 +386,7 @@ public:
         for(int i = 0; i < domain_size_graph; ++i) vertex_to_orbit[i] = orbits_graph.find_orbit(i);
         save_graph.initialize_coloring(&save_col, vertex_to_orbit.get_array());
 
-        std::clog << " saved=" << formula.n_variables() - need_binary_fix << std::endl;
+        //std::clog << " saved=" << formula.n_variables() - need_binary_fix << std::endl;
     }
 
     int n_orbits() {
@@ -397,7 +398,6 @@ public:
     }
 
     void detect_symmetries_generic(bool dejavu_print=false, bool dejavu_prefer_dfs=false) {
-        constexpr int dejavu_backtracking_limit = 64;
 
         orbits.reset();
         orbits_graph.reset();
@@ -1014,10 +1014,10 @@ public:
         std::clog << "c\t probe for row-column symmetry (limit=" << limit <<
                      ", splits=" << split_limit/1000.0/1000.0 <<"M)" << std::endl;
 
+        probe_base_length();
+
         // skip special detection for shallow groups
         if(probed_base_length < 4*log2(orbit_list.size()) && orbit_list.size() > 10000) return;
-
-        probe_base_length();
 
         std::vector<int> in_row; // maps vertices to representative in column of anchor_vertex
         std::vector<int> in_column; // maps vertices to representative in row of anchor_vertex
@@ -1809,10 +1809,10 @@ public:
                              std::vector<int>* order_prev = nullptr) {
         std::clog << "c\t probe for row symmetry (limit=" << limit << ", splits=" << split_limit/1000.0/1000.0 <<"M)" << std::endl;
 
+        probe_base_length();
+
         // skip special detection for shallow groups
         if(probed_base_length < 4*log2(orbit_list.size()) && orbit_list.size() > 10000) return;
-
-        probe_base_length();
 
         dejavu::coloring test_col;
         test_col.copy_any(&save_col);
@@ -1827,9 +1827,7 @@ public:
             ++i;
             if(orbit_handled.get(anchor_vertex)) continue;
             if(row_touched_size[anchor_vertex] == static_cast<int>(orbit_vertices[anchor_vertex].size())) continue;
-            if(probed_base_length < static_cast<int>(orbit_vertices[anchor_vertex].size())/2) {
-                continue;
-            }
+            if(probed_base_length < static_cast<int>(orbit_vertices[anchor_vertex].size())/8) continue;
             std::vector<int> entire_orbit = orbit_vertices[anchor_vertex];
             detect_row_symmetry_orbit(formula, sbp, entire_orbit, ir_controller);
         }
@@ -2350,12 +2348,13 @@ public:
                 ++literal_to_occurence[lit];
             }
         }
-        for(int i = 0; i < 2*formula.n_variables(); i += 2)
+        for(int i = 0; i < 2*formula.n_variables(); i += 1)
             variable_occurence.emplace_back(i, literal_to_occurence[i]);
 
         // heuristic: least-used literals first
         std::sort(variable_occurence.begin(), variable_occurence.end(), [](auto &left, auto &right) {
-            return (left.second < right.second) || (left.second == right.second && left.first < right.first);
+            return (left.second < right.second); // || (left.second == right.second && abs(left.first) < abs(right.first));
+            // || (left.second == right.second && left.first < right.first);
         });
 
         for(const auto& [lit, occ] : variable_occurence) {
@@ -2365,16 +2364,16 @@ public:
             int heuristic_polarity = lit;
 
             // prefer positive literal, if both occur the same number of times
-            if (formula.literal_to_number_of_clauses(graph_to_sat(lit)) ==
-                formula.literal_to_number_of_clauses(-graph_to_sat(lit))) {
-                heuristic_polarity = std::min(lit, graph_negate(lit));
-            }
+            //if (formula.literal_to_number_of_clauses(graph_to_sat(lit)) ==
+            //    formula.literal_to_number_of_clauses(-graph_to_sat(lit))) {
+            //    heuristic_polarity = std::min(lit, graph_negate(lit));
+            //}
 
             // prefer literal that occurs more often in formula
-            if (formula.literal_to_number_of_clauses(graph_to_sat(lit)) <
-                formula.literal_to_number_of_clauses(-graph_to_sat(lit))) {
-                heuristic_polarity = graph_negate(lit);
-            }
+            //if (formula.literal_to_number_of_clauses(graph_to_sat(lit)) >
+            //    formula.literal_to_number_of_clauses(-graph_to_sat(lit))) {
+            //    heuristic_polarity = graph_negate(lit);
+            //}
 
             sbp.add_to_global_order(heuristic_polarity);
         }
@@ -2401,8 +2400,11 @@ public:
         return d.get_automorphism_group_size();
     }
 
-    group_analyzer(long set_absolute_support_limit = -1, long set_graph_component_size_limit = -1) :
-    absolute_support_limit(set_absolute_support_limit), graph_component_size_limit(set_graph_component_size_limit) {};
+    group_analyzer(long set_absolute_support_limit = -1, long set_graph_component_size_limit = -1,
+                   int set_dejavu_backtracking_limit = -1) :
+    absolute_support_limit(set_absolute_support_limit), 
+    graph_component_size_limit(set_graph_component_size_limit),
+    dejavu_backtracking_limit(set_dejavu_backtracking_limit) {};
 
     ~group_analyzer() {
         for(int j = 0; j < static_cast<int>(generators.size()); ++j) {

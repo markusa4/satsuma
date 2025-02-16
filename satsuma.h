@@ -62,9 +62,10 @@ namespace satsuma {
         long absolute_support_limit = 2 * 256 * 1024 * 1024; // we want no more than 2 GB worth of symmetries
 
         // dejavu settings
-        bool dejavu_print        = false;
-        bool dejavu_prefer_dfs   = false;
-        int  dejavu_budget_limit = -1; // <0 means no limits\
+        bool dejavu_print           = false;
+        bool dejavu_prefer_dfs      = false;
+        int  dejavu_budget_limit    = -1; // <0 means no limits
+        int  dejavu_backtrack_limit = 64;
 
         /**
             Compute a symmetry breaking predicate for the given formula.
@@ -104,7 +105,8 @@ namespace satsuma {
             (*log) << "c\n";
             (*log) << "c make graph and approximate orbits";
             sw.start();
-            group_analyzer symmetries(absolute_support_limit, graph_component_size_limit);
+            group_analyzer symmetries(absolute_support_limit, graph_component_size_limit,
+                                      dejavu_backtrack_limit);
             //symmetries.compute_from_cnf(formula);
             symmetries.compute_from_hypergraph(hypergraph);
             hypergraph.clear(); // now that we have the graph, we don't need the corresponding hypergraph structure
@@ -307,6 +309,18 @@ namespace satsuma {
 
         void set_dejavu_print(bool print) {
             dejavu_print = print;
+        }
+
+        void set_dejavu_backtrack_limit(int limit = -1) {
+            dejavu_backtrack_limit = limit;
+        }
+
+        void set_component_size_limit(int limit = -1) {
+            graph_component_size_limit = limit;
+        }
+
+        void set_absolute_support_limit(int limit = -1) {
+            absolute_support_limit = limit;
         }
 
         void set_dejavu_prefer_dfs(bool prefer_dfs) {

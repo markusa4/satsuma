@@ -155,6 +155,7 @@ namespace satsuma {
             tsl::robin_set<std::pair<int, int>, pair_hash> clause_tombstone2;
             tsl::robin_map<std::pair<int, int>, int, pair_hash> count_pairs_in_triples;
 
+            int every_unique_3 = 0;
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
                 if(wrapped_formula.clause_size(i) == 2) {
                     const int l1 = wrapped_formula.literal_at_clause_pos(i, 0);
@@ -166,6 +167,7 @@ namespace satsuma {
                     ++incident_binary[sat_to_graph(l1)];
                     ++incident_binary[sat_to_graph(l2)];
                 }
+
                 if(wrapped_formula.clause_size(i) == 3) {
                     ++incident_ternary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 0))];
                     ++incident_ternary[sat_to_graph(wrapped_formula.literal_at_clause_pos(i, 1))];
@@ -195,6 +197,7 @@ namespace satsuma {
                 const bool l1_enough = incident_ternary[sat_to_graph(l1)] > min_triple_replace;
                 const bool l2_enough = incident_ternary[sat_to_graph(l2)] > min_triple_replace;
                 const bool l3_enough = incident_ternary[sat_to_graph(l3)] > min_triple_replace;
+
 
                 if(l1_enough && l2_enough) count_pairs_in_triples[{l1, l2}] = 0;
                 if(l2_enough && l3_enough) count_pairs_in_triples[{l2, l3}] = 0;

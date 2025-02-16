@@ -268,8 +268,8 @@ public:
                 if(!only_logging) {
                     sbp.push_back({prev_sym, -prev_tst, tst});
                     sbp.push_back({-prev_lit, -prev_tst, tst});
-                    //sbp.push_back({-tst, prev_tst});
-                    //sbp.push_back({-tst, -prev_sym, prev_lit});
+                    // sbp.push_back({-tst, prev_tst}); // can be removed 
+                    // sbp.push_back({-tst, -prev_sym, prev_lit}); // can be removed
                     sbp.push_back({-tst, -l, sym});
                 }
 

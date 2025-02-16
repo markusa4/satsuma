@@ -179,6 +179,13 @@ int commandline_mode(int argc, char **argv) {
             satsuma_preprocessor.set_dejavu_prefer_dfs(true);
         } else if (arg == "__NO_OPT") {
             satsuma_preprocessor.set_optimize_generators(false);
+        } else if (arg == "__NO_LIMITS") {
+            satsuma_preprocessor.set_dejavu_backtrack_limit(-1);
+            satsuma_preprocessor.set_component_size_limit(-1);
+            satsuma_preprocessor.set_absolute_support_limit(-1);
+            satsuma_preprocessor.set_row_orbit_limit(-1);
+            satsuma_preprocessor.set_row_column_orbit_limit(-1);
+            satsuma_preprocessor.set_johnson_orbit_limit(-1);
         } else if(arg == "__PREPROCESS_CNF") {
             satsuma_preprocessor.set_preprocess_cnf(true);
         } else if(arg == "__PREPROCESS_CNF_SUBSUME") {
@@ -231,7 +238,7 @@ int commandline_mode(int argc, char **argv) {
                         (DEJAVU_VERSION_IS_PREVIEW?"preview":"") << "                   │\n";
     if(print) std::clog << "c │      (c) 2024-2025 Markus Anders                               │\n";
     if(print) std::clog << "c │      ...based on work with Sofia Brenner, Gaurav Rattan,       │\n" <<
-                           "c │                            Mate Soos, Pascal Schweitzer        │\n" << 
+                           "c │                            Mate Soos, Pascal Schweitzer,       │\n" << 
                            "c │                            Bart Bogaerts                       │\n";
     if(print) std::clog << "c └────────────────────────────────────────────────────────────────┘" << std::endl;
 
