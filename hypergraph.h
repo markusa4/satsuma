@@ -155,7 +155,6 @@ namespace satsuma {
             tsl::robin_set<std::pair<int, int>, pair_hash> clause_tombstone2;
             tsl::robin_map<std::pair<int, int>, int, pair_hash> count_pairs_in_triples;
 
-            int every_unique_3 = 0;
             for(int i = 0; i < wrapped_formula.n_clauses(); ++i) {
                 if(wrapped_formula.clause_size(i) == 2) {
                     const int l1 = wrapped_formula.literal_at_clause_pos(i, 0);

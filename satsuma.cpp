@@ -186,6 +186,7 @@ int commandline_mode(int argc, char **argv) {
             satsuma_preprocessor.set_row_orbit_limit(-1);
             satsuma_preprocessor.set_row_column_orbit_limit(-1);
             satsuma_preprocessor.set_johnson_orbit_limit(-1);
+            satsuma_preprocessor.set_split_limit(-1);
         } else if(arg == "__PREPROCESS_CNF") {
             satsuma_preprocessor.set_preprocess_cnf(true);
         } else if(arg == "__PREPROCESS_CNF_SUBSUME") {

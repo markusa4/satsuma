@@ -60,6 +60,7 @@ namespace satsuma {
         int break_depth          = 512;
 
         long absolute_support_limit = 2 * 256 * 1024 * 1024; // we want no more than 2 GB worth of symmetries
+        long split_limit = 1024*1024*16;
 
         // dejavu settings
         bool dejavu_print           = false;
@@ -126,10 +127,11 @@ namespace satsuma {
             if (graph_component_size_limit <= 0 || 2*formula.n_variables() < graph_component_size_limit) {
                 symmetries.detect_johnson_arity2(formula, sbp, johnson_orbit_limit);
                 symmetries.detect_row_column_symmetry(formula, sbp, row_column_orbit_limit,
-                                                         std::max(16*formula.n_variables(), 1024*1024*16));
-                symmetries.detect_row_symmetry(formula, sbp, row_orbit_limit, std::max(16*formula.n_variables(), 1024*1024*16));
+                                                         std::max((long) 16*formula.n_variables(), split_limit));
+                symmetries.detect_row_symmetry(formula, sbp, row_orbit_limit, 
+                                                         std::max((long) 16*formula.n_variables(), split_limit));
             } else {
-            (*log) << "c\t exceeded limit" << std::endl;
+                (*log) << "c\t exceeded limit" << std::endl;
             }
 
             const double t_detect_special = sw.stop();
@@ -321,6 +323,10 @@ namespace satsuma {
 
         void set_absolute_support_limit(int limit = -1) {
             absolute_support_limit = limit;
+        }
+
+        void set_split_limit(int limit = -1) {
+            split_limit = limit;
         }
 
         void set_dejavu_prefer_dfs(bool prefer_dfs) {

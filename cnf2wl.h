@@ -103,7 +103,7 @@ public:
                 ++clause_compare_size;
                 test_redundant.set(lit);
                 if(literal_used_list[lit].size() > max_used_list_size) continue;
-                for(int used = 0; used < literal_used_list[lit].size(); ++used) {
+                for(int used = 0; used < static_cast<int>(literal_used_list[lit].size()); ++used) {
                     const int cl = literal_used_list[lit][used];
                     if(clause_size(cl) > subsume_size_limit_big) continue;
                     if(!test_for_subsumption.get(cl)) {
@@ -124,7 +124,6 @@ public:
                 if(sig_diff.count() != 0) continue;
 
                 // actual test
-                bool potential_subsume = true;
                 int  literals_found = 0;
                 for (int j = 0; j < clause_size(i2); ++j) {
                     if(assigned(literal_at_clause_pos(i2, j)) != 0) continue;
