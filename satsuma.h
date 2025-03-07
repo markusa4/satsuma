@@ -153,6 +153,7 @@ namespace satsuma {
 
             if(!struct_only && symmetries.n_generators() > 0) {
                 if(binary_clauses) {
+                    if(my_proof) terminate_with_error("binary clauses and proof-logging are currently incompatible");
                     sw.start();
                     (*log) << "c\n";
                     (*log) << "c add binary clauses" << std::endl;
@@ -368,6 +369,8 @@ namespace satsuma {
 
             // apply rudimentary, symmetry-preserving CNF preprocessing
             if(preprocess_cnf) {
+                if(my_proof) terminate_with_error("CNF preprocessing and proof-logging are currently incompatible");
+
                 (*log) << "c\n";
                 (*log) << "c preprocess cnf" << std::endl;
                 sw.start();

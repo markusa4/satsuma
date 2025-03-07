@@ -246,7 +246,6 @@ public:
         sbp.push_back({prev_tst});
         if(my_proof) my_proof->lex_leader_tseitin(sbp.back(), prev_tst);
 
-        //for (auto l: vars_to_break_on) {
         for (size_t i = 0; i < order_support.size(); ++i) {
             const int l = graph_to_sat(order_support[i]);
             const int sym = graph_to_sat(automorphism.p()[sat_to_graph(l)]);
