@@ -193,6 +193,8 @@ int commandline_mode(int argc, char **argv) {
             satsuma_preprocessor.set_preprocess_cnf_subsume(true);
         } else if(arg == "__HYPERGRAPH_MACROS") {
             satsuma_preprocessor.set_hypergraph_macros(true);
+        } else if(arg == "__NO_HYPERGRAPH_MACROS") {
+            satsuma_preprocessor.set_hypergraph_macros(false);
         } else if(arg == "__BINARY_CLAUSES") {
             satsuma_preprocessor.set_binary_clauses(true);
         } else if (arg == "__STRUCT_ONLY") {

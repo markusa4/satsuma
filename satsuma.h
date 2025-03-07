@@ -47,7 +47,7 @@ namespace satsuma {
         bool optimize_generators = true;
         bool preprocess_cnf      = false;
         bool preprocess_cnf_subsume = false;
-        bool hypergraph_macros   = false;
+        bool hypergraph_macros   = true;
         bool binary_clauses      = false;
 
         // limits for generator optimization
