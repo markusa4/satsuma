@@ -3,7 +3,8 @@
 The goal of the tool is to treat symmetry as well as possible, while incurring only little overhead.
 
 ## Compilation
-Using *cmake*, the project should compile without any further dependencies:
+The project depends on [dejavu](https://www.automorphisms.org) and [boost](https://www.boost.org/).
+Using *cmake*, all dependencies should however be automatically satisfied, if *boost* is available:
 ```text
 cmake .
 make satsuma
@@ -28,7 +29,7 @@ You may see a description with `satsuma -h`.
 
 ## Bugs & Feedback
 If you encounter any bugs or have any feedback to share, please feel free to reach out to me at\
-`markus (at) automorphisms.org`.
+`markus.anders (at) kuleuven.be`.
 
 ## Publications
 The design of *satsuma* is based on the following papers. If you use the tool in your research work, please cite one of the papers.
