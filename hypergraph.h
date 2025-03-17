@@ -138,10 +138,11 @@ namespace satsuma {
         }
 
         bool variable_needs_binary_fix(int variable) {
-            const int lp =  variable;
-            const int ln = -variable;
-            return (literal_needs_binary_fix[sat_to_graph(lp)] || 
-                    literal_needs_binary_fix[sat_to_graph(ln)]);
+            return true;
+            //const int lp =  variable;
+            //const int ln = -variable;
+            //return (literal_needs_binary_fix[sat_to_graph(lp)] || 
+            //        literal_needs_binary_fix[sat_to_graph(ln)]);
         }
 
         void hypergraph_reduction() {
@@ -159,10 +160,10 @@ namespace satsuma {
                 if(wrapped_formula.clause_size(i) == 2) {
                     const int l1 = wrapped_formula.literal_at_clause_pos(i, 0);
                     const int l2 = wrapped_formula.literal_at_clause_pos(i, 1);
-                    if(iso_inv(l1) == iso_inv(-l2) || iso_inv(-l1) == iso_inv(l2)) {
-                        literal_needs_binary_fix[sat_to_graph(l1)] = true;
-                        literal_needs_binary_fix[sat_to_graph(l2)] = true;
-                    }
+                    //if(iso_inv(l1) == iso_inv(-l2) || iso_inv(-l1) == iso_inv(l2)) {
+                    //    literal_needs_binary_fix[sat_to_graph(l1)] = true;
+                    //    literal_needs_binary_fix[sat_to_graph(l2)] = true;
+                    //}
                     ++incident_binary[sat_to_graph(l1)];
                     ++incident_binary[sat_to_graph(l2)];
                 }
