@@ -159,7 +159,7 @@ namespace satsuma {
                 if(wrapped_formula.clause_size(i) == 2) {
                     const int l1 = wrapped_formula.literal_at_clause_pos(i, 0);
                     const int l2 = wrapped_formula.literal_at_clause_pos(i, 1);
-                    if(iso_inv(l1) == iso_inv(l2)) {
+                    if(iso_inv(l1) == iso_inv(-l2) || iso_inv(-l1) == iso_inv(l2)) {
                         literal_needs_binary_fix[sat_to_graph(l1)] = true;
                         literal_needs_binary_fix[sat_to_graph(l2)] = true;
                     }
