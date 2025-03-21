@@ -411,6 +411,10 @@ namespace satsuma {
                 (*log) << "c\t -units=" << unit_propagations << ", -pures=" << pure_literal_num << ", -subsumed=" << subsumed << " (" << t_unit << "ms)" << std::endl;
             }
 
+            if(formula.is_conflicting()) {
+                (*log) << "c formula lead to conflict in preprocessing" << std::endl;
+                formula.reset_assignment();
+            }
             // generate symmetry breaking predicates
             constexpr bool keep_original_order = true;
 

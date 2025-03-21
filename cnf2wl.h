@@ -24,6 +24,7 @@ class cnf2wl {
     int units_applied = 0;
     int redundant_removed = 0;
     int subsumptions_found = 0;
+    bool conflict = false;
     dejavu::ds::markset in_units;
     std::vector<int>    units;
 
@@ -135,7 +136,6 @@ public:
                 // check if success
                 if(literals_found == clause_size(i)) {
                     ++subsumptions_found;
-                    //std::clog << "subsume " << subsumptions_found << " (" << i << "/" << n_clauses() << ")" << std::endl;
                     clause_satisfied.set(i2);
                 }
             }
@@ -187,11 +187,15 @@ public:
     }
 
     int propagate () {
+        if(conflict) return 0;
         int propagations = 0;
         while(true) {
             const int next_unit_literal = dequeue_next_unit();
-            if(next_unit_literal == 0) break;
-            //std::clog << "unit " << next_unit_literal << std::endl;
+            if(next_unit_literal == 0 || conflict) break;
+            if(assigned(next_unit_literal) == -1) {
+                conflict = true;
+                break;
+            }
             assign_literal(next_unit_literal);
             ++propagations;
         }
@@ -215,6 +219,7 @@ public:
 
 
     void assign_literal(int literal) {
+        if(conflict) return;
         assert(assignment[sat_to_graph(literal)] == 0);
         assert(assignment[sat_to_graph(-literal)] == 0);
         assignment[sat_to_graph(literal)]  = 1;
@@ -242,7 +247,6 @@ public:
     }
 
     void remove_watch(int variable, int watch_pos) {
-        //std::clog << "remove_watch: " << variable << "<-" << watch_pos << std::endl;
         int back_watch = variable_watches_clause[variable].back();
         variable_watches_clause[variable][watch_pos] = back_watch;
         variable_watches_clause[variable].resize(variable_watches_clause[variable].size()-1);
@@ -265,8 +269,9 @@ public:
             remove_watch(from_variable, from_pos);
             return;
         }
+        if(clause_size(clause_number) == 1) return;
+
         auto [watch1, watch2] = clauses_watches[clause_number];
-        //std::clog << clause_number << ":" << abs(clauses[watch1]) << ", " <<  abs(clauses[watch2]) << ", " << from_variable << std::endl;
         assert(abs(clauses[watch1]) == from_variable || abs(clauses[watch2]) == from_variable);
         int new_watch = -1;
         for(int i = clauses_pt[clause_number].first; i < clauses_pt[clause_number].second; ++i) {
@@ -278,10 +283,18 @@ public:
         if(new_watch == -1) {
             remove_watch(from_variable, from_pos);
             if (abs(clauses[watch1]) == from_variable) {
-                queue_units(clauses[watch2], clause_number);
+                if(assigned(clauses[watch2]) == -1) {
+                    conflict = true;
+                } else {
+                    queue_units(clauses[watch2], clause_number);
+                }
             } else {
                 assert(abs(clauses[watch2]) == from_variable);
-                queue_units(clauses[watch1], clause_number);
+                if(assigned(clauses[watch1]) == -1) {
+                    conflict = true;
+                } else {
+                    queue_units(clauses[watch1], clause_number);
+                }
             }
         } else {
             remove_watch(from_variable, from_pos);
@@ -321,6 +334,16 @@ public:
 
     int n_variables() {
         return number_of_variables;
+    }
+
+    bool is_conflicting() {
+        return conflict;
+    }
+
+    void reset_assignment() {
+        clause_satisfied.reset();
+        assignment.resize(0);
+        assignment.resize(2*number_of_variables);
     }
 
     void dimacs_output_clauses(std::ostream& out) {
