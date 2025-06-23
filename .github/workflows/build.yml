@@ -42,8 +42,7 @@ jobs:
       - name: Configure CMake on macOS
         if: runner.os == 'macOS'
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake
         shell: bash
 
       - name: Install Boost on Windows
