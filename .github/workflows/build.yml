@@ -43,7 +43,11 @@ jobs:
       - name: Configure project
         run: | 
           if [ "${{ runner.os }}" == "macOS" ]; then
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$(brew --prefix boost)
+            BOOST_DIR=$(brew --prefix boost)
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DBoost_NO_BOOST_CMAKE=ON \
+            -DBOOST_ROOT=$BOOST_DIR \
+            -DCMAKE_PREFIX_PATH=$BOOST_DIR
           else
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 
           fi
