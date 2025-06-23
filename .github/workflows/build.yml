@@ -56,8 +56,7 @@ jobs:
       - name: Configure CMake on Windows
         if: runner.os == 'Windows'
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_TOOLCHAIN_FILE=.\vcpkg\scripts\buildsystems\vcpkg.cmake
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=.\vcpkg\scripts\buildsystems\vcpkg.cmake
         shell: pwsh
 
       - name: Configure CMake on Linux
