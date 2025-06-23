@@ -12,6 +12,8 @@ make satsuma
 Compilation produces a binary *satsuma*. It accepts a DIMACS CNF formula as input, and outputs the formula with additional symmetry breaking constraints. 
 You may consult `satsuma -h` for more options.
 
+There are also [release binaries](https://github.com/markusa4/satsuma/releases) available, as well as binaries of the [very latest version](https://github.com/markusa4/satsuma/actions/workflows/build.yml).
+
 ## Usage
 
 Let's say we have a CNF SAT instance `hole010.cnf`, for which we want to apply symmetry breaking.
