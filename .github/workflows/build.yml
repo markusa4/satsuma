@@ -49,17 +49,24 @@ jobs:
       - name: Install Boost on Windows
         if: runner.os == 'Windows'
         run: |
-          choco install boost-msvc-14.3 --no-progress
+          git clone https://github.com/microsoft/vcpkg.git
+          .\vcpkg\bootstrap-vcpkg.bat
+          .\vcpkg\vcpkg.exe install boost-multiprecision
         shell: pwsh
 
-      - name: Configure CMake on Windows and Linux
-        shell: bash
+      - name: Configure CMake on Windows
+        if: runner.os == 'Windows'
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_TOOLCHAIN_FILE=.\vcpkg\scripts\buildsystems\vcpkg.cmake
+        shell: pwsh
+
+      - name: Configure CMake on Linux
         run: | 
           if [ "${{ runner.os }}" == "Linux" ]; then
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 
-          elif [ "${{ runner.os }}" == "Windows" ]; then
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 
           fi
+        shell: bash
 
       - name: Build Satsuma
         run: cmake --build build --config Release
