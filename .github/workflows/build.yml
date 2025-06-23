@@ -30,6 +30,7 @@ jobs:
             sudo apt-get install -y libboost-all-dev
           elif [ "${{ runner.os }}" == "macOS" ]; then
             brew install boost
+            brew link --overwrite boost
           fi
         shell: bash
 
