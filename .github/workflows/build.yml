@@ -23,15 +23,27 @@ jobs:
         with:
           cmake-version: latest
 
-      - name: Install Boost
+      - name: Install Boost on Linux
         run: |
           if [ "${{ runner.os }}" == "Linux" ]; then
             sudo apt-get update
             sudo apt-get install -y libboost-all-dev
-          elif [ "${{ runner.os }}" == "macOS" ]; then
-            brew install boost
-            brew link --overwrite boost
           fi
+        shell: bash
+
+      - name: Install Boost on macOS
+        if: runner.os == 'macOS'
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git
+          ./vcpkg/bootstrap-vcpkg.sh
+          ./vcpkg/vcpkg install boost-multiprecision
+        shell: bash
+
+      - name: Configure CMake on macOS
+        if: runner.os == 'macOS'
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake
         shell: bash
 
       - name: Install Boost on Windows
@@ -43,11 +55,6 @@ jobs:
       - name: Configure project
         run: | 
           if [ "${{ runner.os }}" == "macOS" ]; then
-            BOOST_DIR=$(brew --prefix boost)
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-            -DBoost_NO_BOOST_CMAKE=ON \
-            -DBOOST_ROOT=$BOOST_DIR \
-            -DCMAKE_PREFIX_PATH=$BOOST_DIR
           else
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 
           fi
