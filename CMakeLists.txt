@@ -24,7 +24,7 @@ add_definitions(-DNDEBUG)
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
 endif()
-find_package(Boost REQUIRED COMPONENTS multiprecision)
+find_package(Boost REQUIRED)
 INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
 
 add_executable(satsuma satsuma.cpp)
