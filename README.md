@@ -48,6 +48,7 @@ The tool is built on top of the practical graph isomorphism solver [dejavu](http
 Many of the implemented procedures are descended from the symmetry breaking tool [BreakID](https://bitbucket.org/krr/breakid/).
 
 
+
 ## License
 All of the code is licensed under the MIT license (see `LICENSE` for the main copyright notice). 
 The files `robin_set.h`, `robin_hash.h`, and `robin_growth_policy.h` are by Thibaut Goetghebuer-Planchon, see the respective files for more information. 
