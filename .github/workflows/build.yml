@@ -41,7 +41,12 @@ jobs:
         shell: pwsh
 
       - name: Configure project
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: | 
+          if [ "${{ runner.os }}" == "macOS" ]; then
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBOOST_ROOT=$(brew --prefix boost)
+          else
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 
+          fi
 
       - name: Build project
         run: cmake --build build --config Release
