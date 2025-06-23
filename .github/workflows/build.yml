@@ -54,8 +54,9 @@ jobs:
 
       - name: Configure project
         run: | 
-          if [ "${{ runner.os }}" == "macOS" ]; then
-          else
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 
+          elif [ "${{ runner.os }}" == "Windows" ]; then
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 
           fi
 
