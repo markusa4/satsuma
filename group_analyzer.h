@@ -2,13 +2,16 @@
 // This file is part of satsuma 1.2.
 // See LICENSE for extended copyright information.
 
-#include "cnf.h"
-#include "dejavu/dejavu.h"
-#include "predicate.h"
-#include "hypergraph.h"
-
 #ifndef SATSUMA_GROUP_H
 #define SATSUMA_GROUP_H
+
+#include "formula.h"
+#include "cnf.h"
+#include "dejavu/dejavu.h"
+#include "dejavu/ds.h"
+#include "dejavu/groups.h"
+#include "predicate.h"
+#include "hypergraph.h"
 
 /**
  * Constructs and analysis a group from a CNF representation of a SAT instance.
@@ -44,7 +47,7 @@ class group_analyzer {
     long graph_component_size_limit = -1;
     int  dejavu_backtracking_limit = 64;
 
-
+    std::ostream* log = &std::clog; /**< logging */
 
     void my_hook(int n, const int* p, int nsupp, const int *supp) {
         orbits_graph.add_automorphism_to_orbit(p, nsupp, supp);
@@ -72,103 +75,9 @@ class group_analyzer {
     }
 
 public:
-
-    /**
-     * Computes the automorphism group of the given CNF \p formula. Constructs a graph from the formula, followed by
-     * a call to dejavu, collecting the necessary data for the group analysis.
-     *
-     * @param formula The CNF formula for which symmetries shall be computed.
-     */
-    void compute_from_cnf(cnf& formula, bool out_graph = false, std::string filename = "") {
-        domain_size = 2*formula.n_variables();
-        domain_size_graph = 2*formula.n_variables() + formula.n_clauses();
-        aw.resize(domain_size);
-        orbits.initialize(domain_size);
-        orbits_graph.initialize(domain_size_graph);
-        store_helper.initialize(domain_size);
-
-        // construct graph
-        dejavu::static_graph graph;
-        graph.initialize_graph(domain_size_graph, formula.n_total_clause_size() + formula.n_variables());
-        int unused_color = 2;
-
-        // vertices for literals
-        for(int i = 1; i < formula.n_variables() + 1; ++i) {
-            const int lp = i;
-            const int ln = -i;
-
-            const int lp_uses = formula.literal_to_number_of_clauses(lp);
-            const int ln_uses = formula.literal_to_number_of_clauses(ln);
-
-            if(lp_uses == 0 && ln_uses == 0) {
-                graph.add_vertex(unused_color++, lp_uses + 1);
-                graph.add_vertex(unused_color++, ln_uses + 1);
-            } else {
-                graph.add_vertex(0, lp_uses + 1);
-                graph.add_vertex(0, ln_uses + 1);
-            }
-        }
-
-        // vertices for clauses
-        int clause_vertex_st = 2*formula.n_variables();
-        for(int i = 0; i < formula.n_clauses(); ++i) {
-            graph.add_vertex(1, formula.clause_size(i));
-        }
-
-        // connect literals belonging to the same variable
-        for(int i = 0; i < formula.n_variables(); ++i) {
-            int vert_lp = 2*i;
-            int vert_ln = 2*i+1;
-            graph.add_edge(vert_lp, vert_ln);
-        }
-
-        // connect clauses to contained literals
-        for(int i = 0; i < formula.n_clauses(); ++i) {
-            for(int j = 0; j < formula.clause_size(i); ++j) {
-                int l = formula.literal_at_clause_pos(i, j);
-                int v = abs(l) - 1;
-                int is_neg = l < 0;
-                int l_to_vertex = 2*v + is_neg;
-                graph.add_edge(l_to_vertex, clause_vertex_st+i);
-            }
-        }
-        if(out_graph) graph.dump_dimacs(filename);
-
-        // save graph for heuristics later
-        save_graph.copy_graph(graph.get_sgraph());
-        save_graph.initialize_coloring(&save_col, graph.get_coloring());
-        ref.refine_coloring(graph.get_sgraph(), &save_col);
-
-        remainder_col.copy_any(&save_col);
-
-        // make orbits from color refinement
-        for(int j = 0; j < domain_size_graph;) {
-            const int col_sz = save_col.ptn[j] + 1;
-            const int vref = save_col.lab[j];
-            for(int k = j; k < j + col_sz; ++k) {
-                const int v = save_col.lab[k];
-                if(v < domain_size) orbits.combine_orbits(v, vref);
-                orbits_graph.combine_orbits(v, vref);
-            }
-
-            j += col_sz;
-        }
-
-        // call dejavu
-        //detect_symmetries_generic();
-
-        // make list of orbits
-        orbit_handled.initialize(domain_size);
-        orbit_vertices.resize(domain_size);
-        for(int i = 0; i < domain_size; ++i) {
-            if (orbits.represents_orbit(i) && orbits.orbit_size(i) > 1) orbit_list.push_back(i);
-            orbit_vertices[orbits.find_orbit(i)].push_back(i);
-        }
-
-        // make a vertex coloring from the orbit partition
-        dejavu::ds::worklist vertex_to_orbit(domain_size_graph);
-        for(int i = 0; i < domain_size_graph; ++i) vertex_to_orbit[i] = orbits_graph.find_orbit(i);
-        save_graph.initialize_coloring(&save_col, vertex_to_orbit.get_array());
+    void set_log_output(std::ostream* new_logout) {
+        if(new_logout == nullptr) terminate_with_error("log output can not be nullptr");
+        log = new_logout;
     }
 
     void compute_from_hypergraph(satsuma::hypergraph_wrapper& hypergraph, bool out_graph = false,
@@ -178,7 +87,7 @@ public:
         const bool use_binary_graph    = (hypergraph.binary_clauses > formula.n_variables());
         const bool use_variable_vertex = use_binary_graph;
         //const bool use_binary_graph = false;
-        std::clog << " (binary_graph=" << use_binary_graph << ")";
+        (*log) << " (binary_graph=" << use_binary_graph << ")";
 
         int need_binary_fix = 0;
         // check how many binary fix vertices do we need
@@ -267,7 +176,7 @@ public:
         }
 
         for(int i = 0; i < static_cast<int>(hypergraph.hyperedge_list.size()); ++i) {
-            assert(hypergraph.hyperedge_list[i].size() < formula.n_variables()*2);
+            assert(static_cast<int>(hypergraph.hyperedge_list[i].size()) < formula.n_variables()*2);
         }
 
         // connect literals belonging to the same variable
@@ -323,12 +232,12 @@ public:
         }
 
         assert(actual_i == formula.n_clauses() - hypergraph.removed_clauses - use_binary_graph*hypergraph.binary_clauses);
-        assert(hypergraph.n_hyperedges() == hypergraph.hyperedge_list.size());
+        assert(hypergraph.n_hyperedges() == static_cast<int>(hypergraph.hyperedge_list.size()));
 
         // connect literals to hyperedges
         for(int i = 0; i < static_cast<int>(hypergraph.hyperedge_list.size()); ++i) {
-            assert(i < hypergraph.hyperedge_list.size());
-            assert(hypergraph.hyperedge_list[i].size() < formula.n_variables()*2);
+            assert(i < static_cast<int>(hypergraph.hyperedge_list.size()));
+            assert(static_cast<int>(hypergraph.hyperedge_list[i].size()) < formula.n_variables()*2);
             int support_added = 0;
             for(int j = 0; j < static_cast<int>(hypergraph.hyperedge_list[i].size()); ++j) {
                 const int l = hypergraph.hyperedge_list[i][j];
@@ -385,8 +294,6 @@ public:
         dejavu::ds::worklist vertex_to_orbit(domain_size_graph);
         for(int i = 0; i < domain_size_graph; ++i) vertex_to_orbit[i] = orbits_graph.find_orbit(i);
         save_graph.initialize_coloring(&save_col, vertex_to_orbit.get_array());
-
-        //std::clog << " saved=" << formula.n_variables() - need_binary_fix << std::endl;
     }
 
     int n_orbits() {
@@ -398,13 +305,12 @@ public:
     }
 
     void detect_symmetries_generic(bool dejavu_print=false, bool dejavu_prefer_dfs=false) {
-
         orbits.reset();
         orbits_graph.reset();
         orbits_graph.reset();
 
         // call dejavu
-        std::clog << "c\t [graph: #vertices " << save_graph.v_size << " #edges " <<
+        (*log) << "c \t[graph: #vertices " << save_graph.v_size << " #edges " <<
                                                  save_graph.e_size << "]\n";
         //auto test_hook = dejavu::hooks::ostream_hook(std::clog);
         auto hook_func = dejavu_hook(self_hook());
@@ -417,63 +323,12 @@ public:
         d.set_limit_component(graph_component_size_limit);
         orbits_graph.reset();
         orbits.reset();
-        std::clog << "c\t dejavu (support_limit=" << absolute_support_limit*4/1024.0/1024.0 << "MB, budget_limit=" <<
+        (*log) << "c \tdejavu (support_limit=" << absolute_support_limit*4/1024.0/1024.0 << "MB, budget_limit=" <<
                      dejavu_backtracking_limit << ")";
         d.automorphisms(&save_graph, remainder_col.vertex_to_col, cert_hook.get_hook());
         //d.automorphisms(&save_graph, remainder_col.vertex_to_col, &hook_func);
-        if (d.get_reached_limit()) std::clog << " exceeded limit";
+        if (d.get_reached_limit()) (*log) << " exceeded limit";
         //d.automorphisms(graph.get_sgraph(), graph.get_coloring(), test_hook.get_hook());
-    }
-
-    /**
-     *   Checks whether the group contains orbits exhibiting a natural symmetric action, and adds appropriate breaking
-     *   constraints to the predicate \p sbp.
-     *   @param formula The formula, used to test candidate symmetries.
-     *   @param sbp The symmetry breaking predicate, to which potential breaking constraints are added.
-     */
-    void detect_symmetric_action(cnf& formula, predicate& sbp) {
-        std::clog << "c\t probe for symmetric actions..." << std::endl;
-
-        // proceed orbit-by-orbit
-        for (int i = 0; i < static_cast<int>(orbit_list.size()); ++i) {
-            if(orbit_handled.get(orbit_list[i])) continue;
-            const int anchor_vertex = orbit_list[i];
-            std::vector<int> orbit = orbit_vertices[anchor_vertex];
-
-            bool potential_symmetric_action = true;
-
-            // check that transposition between vertex 0 and vertex j is a symmetry of formula
-            for(int j = 1; j < static_cast<int>(orbit.size()); ++j) {
-                aw.reset();
-                aw.write_single_map(orbit[0], orbit[j]);
-                aw.write_single_map(orbit[j], orbit[0]);
-                potential_symmetric_action = potential_symmetric_action &&
-                        formula.complete_automorphism(domain_size, aw);
-                if(!potential_symmetric_action || !formula.is_automorphism(domain_size, aw)) {
-                    potential_symmetric_action = false;
-                    break;
-                }
-            }
-
-            if(!potential_symmetric_action) continue;
-
-            // if all the above transpositions are allowed, the orbit admits a natural symmetric action
-            std::clog << "c\t symmetric action orbit " << anchor_vertex << std::endl;
-            for(int j = 1; j < static_cast<int>(orbit.size()); ++j) {
-                aw.reset();
-                aw.write_single_map(orbit[0], orbit[j]);
-                aw.write_single_map(orbit[j], orbit[0]);
-
-                if(!formula.complete_automorphism(domain_size, aw)) break;
-                assert(formula.is_automorphism(domain_size, aw));
-                sbp.add_lex_leader_predicate(aw, orbit);
-            }
-
-            // mark the orbit, and negation orbit, as handled (will not be touched again)
-            orbit_handled.set(orbits.find_orbit(anchor_vertex));
-            orbit_handled.set(orbits.find_orbit(sat_to_graph(-graph_to_sat(anchor_vertex))));
-        }
-
     }
 
     /**
@@ -623,8 +478,8 @@ public:
      * @param formula The given CNF formula.
      * @param sbp The predicate to which the double-lex constraint is added.
      */
-    void detect_johnson_arity2(cnf& formula, predicate& sbp, int limit = -1) {
-        std::clog << "c\t probe for Johnson action (limit=" << limit << ")" << std::endl;
+    void detect_johnson_arity2(abstract_formula& formula, predicate& sbp, int limit = -1) {
+        (*log) << "c \tprobe for Johnson action (limit=" << limit << ")" << std::endl;
 
         // skip special detection for shallow groups
         if(probed_base_length < 4*log2(orbit_list.size()) && orbit_list.size() > 10000) return;
@@ -718,7 +573,7 @@ public:
 
             if(!potential_johnson) continue;
 
-            std::clog << "c\t candidate Johnson " << imaginary_domain_cnt+1 << ", ar 2" << std::endl;
+            (*log) << "c \tcandidate Johnson " << imaginary_domain_cnt+1 << ", ar 2" << std::endl;
 
             std::unordered_map<std::pair<int,int>, int, hash_pair> lookup_subset;
             for(auto vertex : orbit) {
@@ -845,13 +700,13 @@ public:
                 potential_johnson = potential_johnson && formula.complete_automorphism(domain_size, aw);
                 if(!potential_johnson || !formula.is_automorphism(domain_size, aw)) {
                     potential_johnson = false;
-                    std::clog << "c\t not a Johnson action(" << j-1 << ", " << j << ") " << johnson_block_action[0].size() << std::endl;
+                    (*log) << "c \tnot a Johnson action(" << j-1 << ", " << j << ") " << johnson_block_action[0].size() << std::endl;
                     break;
                 }
             }
 
             if(potential_johnson) {
-                std::clog << "c\t  found Johnson " << imaginary_domain_cnt+1 << ", ar 2, block_sz " << johnson_block_action[0].size() << std::endl;
+                (*log) << "c \t found Johnson " << imaginary_domain_cnt+1 << ", ar 2, block_sz " << johnson_block_action[0].size() << std::endl;
 
                 // suggest order according to Johnson
                 std::vector<int> order;
@@ -893,7 +748,7 @@ public:
                     if(!potential_johnson) break;
                     assert(formula.is_automorphism(domain_size, aw));
 
-                    sbp.add_lex_leader_predicate(aw, order);
+                    sbp.add_lex_leader_predicate(aw, order, INT32_MAX);
                 }
 
                 for(auto v : orbit) {
@@ -918,7 +773,7 @@ public:
      *
      * @param matrix_model The matrix model.
      */
-    void double_lex(cnf& formula, predicate& sbp, std::vector<std::vector<int>>& matrix_model) {
+    void double_lex(abstract_formula& formula, predicate& sbp, std::vector<std::vector<int>>& matrix_model) {
         std::vector<int> order;
 
         std::vector<int> reorder_rows_row;
@@ -1010,8 +865,8 @@ public:
      * @param formula The given CNF formula.
      * @param sbp The predicate to which the double-lex constraint is added.
      */
-    void detect_row_column_symmetry(cnf& formula, predicate& sbp, int limit = -1, long split_limit = -1) {
-        std::clog << "c\t probe for row-column symmetry (limit=" << limit <<
+    void detect_row_column_symmetry(abstract_formula& formula, predicate& sbp, int limit = -1, long split_limit = -1) {
+        (*log) << "c \tprobe for row-column symmetry (limit=" << limit <<
                      ", splits=" << split_limit/1000.0/1000.0 <<"M)" << std::endl;
 
         probe_base_length();
@@ -1201,9 +1056,6 @@ public:
                 continue;
             }
 
-            //std::clog << "c\t candidate " << row.size() << "x" << column.size() << " matrix model" << std::endl;
-            //std::clog << "c\t attempting to order..." << std::endl;
-
             // If sizes are plausible, we have a candidate, which we check in the routine below.
             const bool confirmed = check_row_column_candidate(formula, sbp, orbit, row, column, in_row, in_column,
                                                               anchor_vertex, largest_remainder_sz);
@@ -1232,7 +1084,7 @@ public:
      * @param anchor_vertex The anchor vertex
      * @param largest_remainder_sz Size of the largest remainder.
      */
-    bool check_row_column_candidate(cnf& formula, predicate& sbp,
+    bool check_row_column_candidate(abstract_formula& formula, predicate& sbp,
                                     std::vector<int>& orbit, std::vector<int>& row, std::vector<int>& column,
                                     std::vector<int>& in_row, std::vector<int>& in_column,
                                     int anchor_vertex, int largest_remainder_sz) {
@@ -1311,7 +1163,6 @@ public:
         if(!potential_row_column_symmetry) return false;
 
         // verify that this is indeed a row-column symmetry matrix model
-        //std::clog << "c\t testing row-column symmetry..." << std::endl;
 
         // we have found all the representatives, so let's construct the actual matrix
         std::vector<int> row_to_index;
@@ -1342,13 +1193,11 @@ public:
         }
         for(j = 1; j < static_cast<int>(column.size()); ++j) {
             if(row_size[0] != row_size[j]) {
-                // std::clog << "c\t row " << j << "(different size " << row_size[0] << "-" << row_size[j] << std::endl;
                 potential_row_column_symmetry = false;
             }
         }
         for(j = 1; j < static_cast<int>(row.size()); ++j) {
             if(column_size[0] != column_size[j]) {
-                // std::clog << "c\t column " << j << " different size" << column_size[0] << "-" << column_size[j] << std::endl;
                 potential_row_column_symmetry = false;
             }
         }
@@ -1447,7 +1296,7 @@ public:
         if(!potential_row_column_symmetry) return false;
 
         // matrix is confirmed to be row-column symmetry, now we write a double-lex predicate
-        std::clog << "c\t  found row-column " << row.size() << "x" << column.size() << std::endl;
+        (*log) << "c\t  found row-column " << row.size() << "x" << column.size() << std::endl;
 
         double_lex(formula, sbp, matrix_model);
         orbit_handled.set(orbits.find_orbit(anchor_vertex));
@@ -1482,7 +1331,7 @@ public:
         }
     }
 
-    void detect_row_symmetry_orbit(cnf& formula, predicate& sbp, std::vector<int>& entire_orbit,
+    void detect_row_symmetry_orbit(abstract_formula& formula, predicate& sbp, std::vector<int>& entire_orbit,
                                    dejavu::ir::controller& ir_controller, std::vector<int>* recurse_order = nullptr,
                                            std::vector<int>* individualize = nullptr,
                                             std::vector<int>* in_row = nullptr,
@@ -1504,6 +1353,7 @@ public:
 
         // orbit reduction test
         const int anchor_vertex = entire_orbit[0];
+        if(ir_controller.c->ptn[ir_controller.c->vertex_to_col[anchor_vertex]] == 0) return;
         ir_controller.move_to_child(&save_graph, anchor_vertex);
         initial_split_counter += ir_controller.get_number_of_splits();
 
@@ -1529,7 +1379,10 @@ public:
         //}
 
         // skip if orbit too small
-        if(reduce_orbit && reduce_orbit_to_color_sz + 1 == 2) return;
+        if(reduce_orbit && reduce_orbit_to_color_sz + 1 <= 2) {
+            ir_controller.move_to_parent();
+            return;
+        }
 
         std::vector<int> orbit;
         if(reduce_orbit) {
@@ -1562,7 +1415,7 @@ public:
             if(j == 0) {
                 const int remainder_orbit = ir_controller.c->ptn[ir_controller.c->vertex_to_col[orbit[1]]] + 1;
                 if (remainder_orbit < static_cast<int>(orbit.size()) - 1) {
-                    std::clog << "c remainder orbit too small " << remainder_orbit << std::endl;
+                    (*log) << "c remainder orbit too small " << remainder_orbit << std::endl;
                     ir_controller.move_to_parent();
                     potential_row_symmetry = false;
                     break;
@@ -1649,7 +1502,7 @@ public:
 
         // recursively test & order blocks for row symmetry, in order to determine order
         if(potential_blocks.size() > 0){
-            std::clog << "c\t recursing " << potential_blocks.size() << " blocks of candidate " << orbit.size() << "x"
+            (*log) << "c \trecursing " << potential_blocks.size() << " blocks of candidate " << orbit.size() << "x"
                       << orbit_row[0].size() << "r" << std::endl;
             std::vector<int> in_row;
             in_row.resize(domain_size);
@@ -1662,13 +1515,11 @@ public:
                     if (ir_controller.get_base_pos() > 0) ir_controller.move_to_parent();
                 }
             }
-
             for(int j = 0; j < static_cast<int>(orbit.size()); ++j) {
                 std::sort(orbit_row[j].begin(), orbit_row[j].end(),[&](int A, int B) -> bool
                 {return (save_col.vertex_to_col[A] < save_col.vertex_to_col[B]) ||
                         ((save_col.vertex_to_col[A] == save_col.vertex_to_col[B]) && in_row[A] < in_row[B]);});
             }
-
         }
 
         // check that transposition between row 1 and row j is a symmetry
@@ -1689,7 +1540,7 @@ public:
         if(!potential_row_symmetry) return;
 
         // matrix is confirmed to be row-column symmetry, now we write a double-lex predicate
-        std::clog << "c\t  found row " << orbit.size() << "x" << orbit_row[0].size() << (reduce_orbit?" (red. orbit)":"") << ", generating row predicate" << std::endl;
+        (*log) << "c \t found row " << orbit.size() << "x" << orbit_row[0].size() << (reduce_orbit?" (red. orbit)":"") << ", generating row predicate" << std::endl;
 
         if(recurse_order == nullptr && individualize == nullptr && !reduce_orbit) {
             for(auto v : orbit) {
@@ -1805,9 +1656,10 @@ public:
      * @param formula The given CNF formula.
      * @param sbp The predicate to which the double-lex constraint is added.
      */
-    void detect_row_symmetry(cnf& formula, predicate& sbp, int limit = -1, long split_limit = -1,
+    void detect_row_symmetry(abstract_formula& formula, predicate& sbp, int limit = -1, long split_limit = -1,
                              std::vector<int>* order_prev = nullptr) {
-        std::clog << "c\t probe for row symmetry (limit=" << limit << ", splits=" << split_limit/1000.0/1000.0 <<"M)" << std::endl;
+        (*log) << "c \tprobe for row symmetry (limit=" << limit << ", splits=" << split_limit/1000.0/1000.0 <<"M)" 
+               << std::endl;
 
         probe_base_length();
 
@@ -1894,7 +1746,7 @@ public:
         for(int k = 0; k < aw.nsupp(); ++k) vertex_score[aw.supp()[k]] -= 1;
     }
 
-    int add_binary_clauses_no_schreier(cnf& formula, predicate& sbp, int depth_limit = 128) {
+    int add_binary_clauses_no_schreier(predicate& sbp, int depth_limit = 128) {
         create_generator_used_list(sbp);
         dejavu::ds::markset fixed_generator(generators.size());
         dejavu::groups::orbit ps_orbits(domain_size);
@@ -2166,7 +2018,7 @@ public:
             }
 
             if(k % 16 == 15) {
-                std::clog << "c\t " << "opt it=" << k << ", l=" << loads1+loads2 << ", m=" << mults << ", opt=" << shrinks << ", avg=" << ((int)round(avg_support)) << ", b=" << best_support << ", gens=" << generators.size() <<
+                (*log) << "c \t" << "opt it=" << k << ", l=" << loads1+loads2 << ", m=" << mults << ", opt=" << shrinks << ", avg=" << ((int)round(avg_support)) << ", b=" << best_support << ", gens=" << generators.size() <<
                           std::endl;
             }
 
@@ -2262,7 +2114,7 @@ public:
                     generators.back()->store(domain_size, aw, store_helper);
                 }
             }
-            std::clog << "c\t ran it=" << k << ", +gens=" << additions << " " << std::endl;
+            (*log) << "c \tran it=" << k << ", +gens=" << additions << " " << std::endl;
         }
 
         constexpr int dense_support_limit = 32000;
@@ -2281,7 +2133,6 @@ public:
 
             aw.reset();
             generators[conj_j]->load(aw);
-            //std::clog << "from:" << std::endl;
             //print_automorphism(domain_size, aw.p(), aw.nsupp(), aw.supp());
             
             if(l == 0 || aw2.nsupp() == 0 || aw2.nsupp() > dense_support_limit) {
@@ -2322,18 +2173,17 @@ public:
             additions += 1;
             generators.push_back(new dejavu::groups::stored_automorphism());
             generators.back()->store(domain_size, aw3, store_helper);
-            //std::clog << "c\t con " << j << "^-1 " << conj_j << " " << j << " support " << aw.nsupp() << std::endl;
         }
 
 
-        std::clog << "c\t con " << "best_support=" << best_support << ", best_gens=" << good_support_gens.size() << ", +gens="
+        (*log) << "c \tcon " << "best_support=" << best_support << ", best_gens=" << good_support_gens.size() << ", +gens="
                    << additions << std::endl;
 
         // re-optimize generators
         if(reopt) optimize_support(aw2, rng, optimize_passes, power_limit, original_generators);
     }
 
-    void finalize_break_order(cnf& formula, predicate& sbp) {
+    void finalize_break_order(abstract_formula& formula, predicate& sbp) {
         // we specify a literal order
         std::vector<std::pair<int, int>> variable_occurence;
         std::vector<int> literal_to_occurence;
@@ -2381,7 +2231,7 @@ public:
         sbp.finalize_order();
     }
 
-    int add_lex_leader_for_generators(cnf& formula, predicate& sbp, int depth = 50) {
+    int add_lex_leader_for_generators(abstract_formula& formula, predicate& sbp, int depth = 50) {
         int constraints_added = 0;
 
         // now output breaking constraints for generators

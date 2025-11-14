@@ -4,6 +4,7 @@
 
 #include "satsuma.h"
 #include "parser.h"
+#include "proof.h"
 #include <iostream>
 #include <chrono>
 #include <string>
@@ -29,8 +30,8 @@ int commandline_mode(int argc, char **argv) {
     bool use_profiling     = true;
 
     bool print = true;
+    empty_stream no_log;
     satsuma::preprocessor satsuma_preprocessor;
-    std::clog << std::setprecision(2) << std::fixed;
 
     std::string write_auto_file_name;
 
@@ -51,6 +52,9 @@ int commandline_mode(int argc, char **argv) {
             std::clog << "   "  << std::left << std::setw(23) <<
                          "--out-file [FILE]" << std::setw(16) <<
                          "Output file in CNF format" << std::endl;
+            std::clog << "   "  << std::left << std::setw(23) <<
+                         "--proof-file [FILE]" << std::setw(16) <<
+                         "Proof file in VeriPB 3.0 format" << std::endl;
             std::clog << "   -----------------------------------------------------------------------\n";
             std::clog << "   "  << std::left << std::setw(23) <<
                       "--dejavu-print" << std::setw(16) <<
@@ -58,9 +62,9 @@ int commandline_mode(int argc, char **argv) {
             std::clog << "   "  << std::left << std::setw(23) <<
                       "--dejavu-prefer-dfs" << std::setw(16) <<
                       "Makes dejavu prefer depth-first search" << std::endl;
-            std::clog << "   "  << std::left << std::setw(23) <<
-                      "--graph-only" << std::setw(16) <<
-                      "Outputs the model graph in DIMACS" << std::endl;
+            //std::clog << "   "  << std::left << std::setw(23) <<
+            //          "--graph-only" << std::setw(16) <<
+            //          "Outputs the model graph in DIMACS" << std::endl;
             std::clog << "   -----------------------------------------------------------------------\n";
             std::clog << "   "  << std::left << std::setw(23) <<
                       "--break-depth [N]" << std::setw(16) <<
@@ -69,8 +73,8 @@ int commandline_mode(int argc, char **argv) {
                       "--preprocess-cnf" << std::setw(16) <<
                       "Preprocess before symmetry breaking" << std::endl;
             std::clog << "   "  << std::left << std::setw(23) <<
-                      "--binary-clauses" << std::setw(16) <<
-                      "Use the binary clause heuristic" << std::endl;
+                      "--schreier-cuts" << std::setw(16) <<
+                      "Use the Schreier cut heuristic" << std::endl;
             std::clog << "   "  << std::left << std::setw(23) <<
                       "--no-opt" << std::setw(16) <<
                       "Don't optimize generators" << std::endl;
@@ -116,6 +120,14 @@ int commandline_mode(int argc, char **argv) {
                 std::cerr << "--break-depth option requires one argument." << std::endl;
                 return 1;
             }
+        } else if (arg == "__COMPONENT_LIMIT") {
+            if (i + 1 < argc) {
+                i++;
+                satsuma_preprocessor.set_component_size_limit(atoi(argv[i]));
+            } else {
+                std::cerr << "--component-limit option requires one argument." << std::endl;
+                return 1;
+            }
         } else if (arg == "__ROW_ORBIT_LIMIT") {
             if (i + 1 < argc) {
                 i++;
@@ -147,6 +159,40 @@ int commandline_mode(int argc, char **argv) {
                 std::cerr << "--johnson-orbit-limit option requires one argument." << std::endl;
                 return 1;
             }
+        } else if (arg == "__SPARSE_MODEL_LIMIT") {
+            if (i + 1 < argc) {
+                i++;
+                satsuma_preprocessor.set_sparse_model_budget(std::stoull(argv[i]));
+            } else {
+                std::cerr << "--sparse-model-limit option requires one argument." << std::endl;
+                return 1;
+            }
+        } else if (arg == "__DENSE_MODEL_LIMIT") {
+            if (i + 1 < argc) {
+                i++;
+                satsuma_preprocessor.set_dense_model_budget(std::stoull(argv[i]));
+            } else {
+                std::cerr << "--dense-model-limit option requires one argument." << std::endl;
+                return 1;
+            }
+        } else if (arg == "__ORDER_MODEL_LIMIT") {
+            if (i + 1 < argc) {
+                i++;
+                satsuma_preprocessor.set_order_model_budget(std::stoull(argv[i]));
+            } else {
+                std::cerr << "--order-model-limit option requires one argument." << std::endl;
+                return 1;
+            }
+        } else if (arg == "__PROOF_DENSE_CROSSOVER") {
+            if (i + 1 < argc) {
+                i++;
+                satsuma_preprocessor.set_proof_dense_crossover(atoi(argv[i]));
+            } else {
+                std::cerr << "--proof-dense-crossover option requires one argument." << std::endl;
+                return 1;
+            }
+        } else if (arg == "__PROOF_SPARSE_RUP") {
+            satsuma_preprocessor.set_proof_sparse_pol(false);
         } else if (arg == "__OPT_PASSES") {
             if (i + 1 < argc) {
                 i++;
@@ -189,18 +235,25 @@ int commandline_mode(int argc, char **argv) {
             satsuma_preprocessor.set_split_limit(-1);
         } else if(arg == "__PREPROCESS_CNF") {
             satsuma_preprocessor.set_preprocess_cnf(true);
+        } else if(arg == "__PREPROCESS_CNF_UNIT") {
+            satsuma_preprocessor.set_preprocess_cnf_unit(true);
+        } else if(arg == "__PREPROCESS_CNF_PURE") {
+            satsuma_preprocessor.set_preprocess_cnf_pure(true);
         } else if(arg == "__PREPROCESS_CNF_SUBSUME") {
             satsuma_preprocessor.set_preprocess_cnf_subsume(true);
         } else if(arg == "__HYPERGRAPH_MACROS") {
             satsuma_preprocessor.set_hypergraph_macros(true);
         } else if(arg == "__NO_HYPERGRAPH_MACROS") {
             satsuma_preprocessor.set_hypergraph_macros(false);
-        } else if(arg == "__BINARY_CLAUSES") {
+        } else if((arg == "__BINARY_CLAUSES") || (arg == "__SCHREIER_CUTS")) {
             satsuma_preprocessor.set_binary_clauses(true);
         } else if (arg == "__STRUCT_ONLY") {
             satsuma_preprocessor.set_struct_only(true);
-        } else if (arg == "__GRAPH_ONLY") {
-            satsuma_preprocessor.set_graph_only(true);
+        } else if (arg == "__ADD_REDUCED_AS_UNIT") {
+            satsuma_preprocessor.set_add_reduced_as_unit(true);
+        } else if (arg == "__SILENT") {
+            satsuma_preprocessor.set_log_output(&no_log);
+            print = false;
         } else if (arg == "__PROOF_FILE") {
             if (i + 1 < argc) {
                 i++;
@@ -234,6 +287,7 @@ int commandline_mode(int argc, char **argv) {
         return 1;
     }
 
+    if(print) std::clog << std::setprecision(2) << std::fixed;
     if(print) std::clog << "c ┌────────────────────────────────────────────────────────────────┐\n";
     if(print) std::clog << "c │      satsuma -- a symmetry preprocessor for SAT                │\n";
     if(print) std::clog << "c │      satsuma_version=" << SATSUMA_VERSION_MAJOR << "." << SATSUMA_VERSION_MINOR << ", ";
@@ -246,7 +300,7 @@ int commandline_mode(int argc, char **argv) {
     if(print) std::clog << "c └────────────────────────────────────────────────────────────────┘" << std::endl;
 
     if (!entered_file) {
-        std::clog << "c no file specified, reading from stdin, (use --help for options)" << std::endl;
+        if(print) std::clog << "c no file specified, reading from stdin, (use --help for options)" << std::endl;
         //return 1;
     }
 
@@ -254,9 +308,24 @@ int commandline_mode(int argc, char **argv) {
     profiler my_profiler;
     if(use_profiling) satsuma_preprocessor.set_profiler(&my_profiler);
 
+
+    // parsing
+    if(print) std::clog << "c parse '" << filename << "'";
+    stopwatch sw;
+    sw.start();
+    cnf2wl formula;
+    const double read_mb = parse_dimacs_to_cnf2wl(filename, formula, entered_file);
+    if(print) std::clog << "\nc \tread " << read_mb << "MB ";
+    const double t_parse = sw.stop();
+    my_profiler.add_result("parse", t_parse);
+    if(print) std::clog << " (" << sw.stop() << "ms)" << std::endl;
+    if(print) std::clog << "c\t [cnf: #variables " << formula.n_variables() << " #clauses " << formula.n_clauses()
+                     << " #redundant " << formula.n_redundant_clauses() << " #arr "
+                     << formula.n_len() <<  "]"<< std::endl;
+
     // proof logging
     std::ofstream proof_file;
-    proof_veripb my_proof(proof_file);
+    proof my_proof(proof_file, formula.n_variables());
     if(use_proof_logging) {
         try {
             proof_file.open(proof_filename);
@@ -265,20 +334,6 @@ int commandline_mode(int argc, char **argv) {
         }
         satsuma_preprocessor.set_proof(&my_proof);
     }
-
-    // parsing
-    if(print) std::clog << "c parse '" << filename << "'";
-    stopwatch sw;
-    sw.start();
-    cnf2wl formula;
-    parse_dimacs_to_cnf2wl(filename, formula, entered_file);
-    const double t_parse = sw.stop();
-    my_profiler.add_result("parse", t_parse);
-    if(print) std::clog << " (" << sw.stop() << "ms)" << std::endl;
-    std::clog << "c\t [cnf: #variables " << formula.n_variables() << " #clauses " << formula.n_clauses()
-                     << " #redundant " << formula.n_redundant_clauses() << " #arr "
-                     << formula.n_len() <<  "]"<< std::endl;
-
     if(use_proof_logging && print) std::clog << "c output proof to '" << proof_filename << "'\n";
 
     // call main algorithm
@@ -286,7 +341,7 @@ int commandline_mode(int argc, char **argv) {
     satsuma_preprocessor.preprocess(formula);
 
     // output profile
-    if(use_profiling) {
+    if(use_profiling && print) {
         std::clog << "c ------------------------------------------------------------------\n";
         const double t_total = sw.stop();
         my_profiler.print_results(std::clog, t_total);

@@ -9,10 +9,16 @@
 #include <random>
 #include <cstring>
 #include <chrono>
+#include <charconv>
 #include <iomanip>
 
 #ifndef SATSUMA_UTILITY_H
 #define SATSUMA_UTILITY_H
+
+static void terminate_with_error(std::string error_msg) {
+    std::cerr << "c \nc " << error_msg << std::endl;
+    exit(1);
+}
 
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 // should be POSIX, where "_unlocked" is available
@@ -28,6 +34,18 @@
 #define satsuma_funlockfile(f) {};
 #endif
 
+inline void output_integer(FILE* out, const int l) {
+    static constexpr int buffer_size = 16;
+    static char          buffer[buffer_size];
+
+    auto const [end_ptr, err] = std::to_chars(buffer, buffer + buffer_size, l);
+    if(err == std::errc::value_too_large) terminate_with_error("buffer too small");
+    for(char* ptr = buffer; ptr < end_ptr; ++ptr) satsuma_putc(*ptr, out);
+}
+
+inline void output_string(FILE* out, const std::string& str) {
+    for(const char& c : str) satsuma_putc(c, out);
+}
 
 /**
 * Maps a SAT literal to it's corresponding graph vertex
@@ -124,10 +142,6 @@ public:
     }
 };
 
-static void terminate_with_error(std::string error_msg) {
-    std::cerr << "c \nc " << error_msg << std::endl;
-    exit(1);
-}
 
 [[maybe_unused]] static void print_automorphism(int n, const int *p, int nsupp, const int *supp) {
     static dejavu::markset test_set;
@@ -182,6 +196,24 @@ struct any_hash
     }
 };
 
+struct any_hash2
+{
+    long operator()(const std::vector<std::pair<int, int>>
+                    &myVector) const
+    {
+        long answer = myVector.size();
+
+        for (std::pair<int, int> i : myVector)
+        {
+            answer ^= hash32shift(i.first) + 0x9e3779b9 +
+                      (answer << 6) + (answer >> 2);
+            answer ^= hash32shift(i.second) + 0x9e3779b9 +
+                      (answer << 6) + (answer >> 2);
+        }
+        return answer;
+    }
+};
+
 struct triple_hash {
     inline std::size_t operator()(const std::tuple<int,int,int> & v) const {
         return 48*std::get<0>(v)+24*hash32shift(std::get<1>(v))+hash32shift(std::get<2>(v));
@@ -192,6 +224,20 @@ struct pair_hash {
     std::size_t operator()(const std::pair<int,int> & v) const {
         return v.first*31+hash32shift(v.second);
     }
+};
+
+class empty_buffer : public std::streambuf {
+protected:
+    int overflow(int c) override {
+        return c; 
+    }
+};
+
+class empty_stream : public std::ostream {
+public:
+    empty_stream() : std::ostream(&buffer) {}
+private:
+    empty_buffer buffer;
 };
 
 #endif //SATSUMA_UTILITY_H

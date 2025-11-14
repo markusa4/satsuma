@@ -12,8 +12,6 @@ make satsuma
 Compilation produces a binary *satsuma*. It accepts a DIMACS CNF formula as input, and outputs the formula with additional symmetry breaking constraints. 
 You may consult `satsuma -h` for more options.
 
-There are also [release binaries](https://github.com/markusa4/satsuma/releases) available, as well as binaries of the [very latest version](https://github.com/markusa4/satsuma/actions/workflows/build.yml).
-
 ## Usage
 
 Let's say we have a CNF SAT instance `hole010.cnf`, for which we want to apply symmetry breaking.
@@ -27,11 +25,31 @@ The formula `hole010.cnf` is satisfiable, if and only if `hole010.break.cnf` is 
 We can then pass `hole010.break.cnf` to a SAT solver of choice, in the case above to cryptominisat.
 
 There are more options available to influence the generation of symmetry breaking constraints. 
-You may see a description with `satsuma -h`.
+You may see a description with `satsuma -h`. The default settings try to achieve a good balance between overhead and effectiveness. However, the tool can be configured to attempt stronger breaking. Which parameters work best will strongly depend on the instance. Here are some settings to try: 
+```text 
+satsuma --no-opt -f formula.cnf
+satsuma --opt-reopt -f formula.cnf
+satsuma --opt-reopt --opt-conjugations 5000 -f formula.cnf  // (or >5000)
+satsuma --schreier-cuts -f formula.cnf
+```
+
+## Proof-logging
+Run with 
+```text 
+--proof-file proof.out
+```
+to enable output of a VeriPB proof `proof.out`.
+
+To determine the switch from *dense* to *sparse* proof-logging, use
+```text 
+--proof-dense-crossover 0
+```
+Here, a crossover of *0* means sparse logging is always used. A crossover of, say, *16* means that dense logging is used for orders smaller than 16, and sparse logging otherwise.
+
 
 ## Bugs & Feedback
 If you encounter any bugs or have any feedback to share, please feel free to reach out to me at\
-`markus.anders (at) kuleuven.be`.
+`anders (at) cs.uni-kl.de`.
 
 ## Publications
 The design of *satsuma* is based on the following papers. If you use the tool in your research work, please cite one of the papers.
@@ -50,7 +68,9 @@ The tool is built on top of the practical graph isomorphism solver [dejavu](http
 Many of the implemented procedures are descended from the symmetry breaking tool [BreakID](https://bitbucket.org/krr/breakid/).
 
 
-
 ## License
-All of the code is licensed under the MIT license (see `LICENSE` for the main copyright notice). 
-The files `robin_set.h`, `robin_hash.h`, and `robin_growth_policy.h` are by Thibaut Goetghebuer-Planchon, see the respective files for more information. 
+All of the code is licensed under the MIT license (see `LICENSE` for the main copyright notice).
+
+(A) The files `robin_set.h`, `robin_map.h`, `robin_hash.h`, and `robin_growth_policy.h` are by Thibaut Goetghebuer-Planchon, see the respective files for more information.\
+(B) The file `proof.h` is authored by Wietze Koops and Markus Anders.\
+(C) All files not falling in either (A) or (B) are by Markus Anders.

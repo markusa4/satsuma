@@ -180,7 +180,7 @@ namespace satsuma {
                 ternary_above_limit += incident_ternary[i] > min_triple_replace;
                 ternary_above_limit += incident_ternary[i+1] > min_triple_replace;
             }
-            std::clog << " (sz2=" << binary_clauses << ", sz3=" << ternary_clauses << ")";
+            //std::clog << " (sz2=" << binary_clauses << ", sz3=" << ternary_clauses << ")";
 
             if(ternary_above_limit < 2048) return;
 
@@ -297,8 +297,8 @@ namespace satsuma {
 
 
 
-            std::clog << "\nc\t +hyedge=" << n_hyperedges() << ", +hyedge_sup=" << hyperedge_support << ", -cl=" << removed_clauses
-                      << ", -cl_sup=" << removed_clause_support;
+            //std::clog << "\nc\t +hyedge=" << n_hyperedges() << ", +hyedge_sup=" << hyperedge_support << ", -cl=" << removed_clauses
+            //          << ", -cl_sup=" << removed_clause_support;
         }
 
         void clear() {

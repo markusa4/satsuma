@@ -7,6 +7,8 @@
 
 #include <string>
 #include "dejavu/groups.h"
+#include "proof.h"
+#include "formula.h"
 #include "tsl/robin_set.h"
 #include "utility.h"
 #include "cnf2wl.h"
@@ -14,11 +16,11 @@
 /**
  * A CNF formula with a hash table of clauses. Can not contain duplicate clauses.
  */
-class cnf {
+class cnf : public abstract_formula {
     // hash sets for clauses
-    tsl::robin_set<std::vector<int>, any_hash>                  clause_db_arbitrary;
-    tsl::robin_set<std::pair<int, int>, pair_hash>                  clause_db_size2;
-    tsl::robin_set<std::tuple<int, int, int>, triple_hash>          clause_db_size3;
+    tsl::robin_set<std::vector<int>, any_hash>             clause_db_arbitrary;
+    tsl::robin_set<std::pair<int, int>, pair_hash>         clause_db_size2;
+    tsl::robin_set<std::tuple<int, int, int>, triple_hash> clause_db_size3;
 
     // clauses as a vector
     std::vector<std::pair<int, int>> clauses_pt;
@@ -35,10 +37,11 @@ class cnf {
     // auxiliary data structures used for methods
     dejavu::ds::markset test_used;
     dejavu::ds::markset support_test;
-    std::vector<int> need_to_test_clauses;
-    std::vector<int> test_clause;
+    std::vector<int>    need_to_test_clauses;
+    std::vector<int>    test_clause;
     std::vector<std::pair<int, int>> add_pairs;
 
+    // maintain the original order of literals in clauses
     bool keep_original_order = true;
 
 public:
@@ -47,21 +50,55 @@ public:
      *
      * @param other_formula the other formula
      */
-    void read_from_cnf2wl(cnf2wl& other_formula, bool original_order = true) {
+    void read_from_cnf2wl(cnf2wl& other_formula, bool original_order = true, proof* my_proof = nullptr) {
         keep_original_order = original_order;
         reserve(other_formula.n_variables(), other_formula.n_clauses() - other_formula.satisfied_clauses());
-        std::vector<int> next_clause;
+
+        std::vector<int> next_clause;  //< temporary storage for constructing the next clause
+        std::vector<int> delete_stack; //< used to keep track of which constraints have to be removed in the proof
+
         for(int i = 0; i < other_formula.n_clauses(); ++i) {
-            if(other_formula.is_satisfied(i)) continue;
+            // early-out if clause was already deemed satisfied
+            if(other_formula.is_satisfied(i)) {
+                if(my_proof) delete_stack.push_back(i);
+                continue;
+            }
+            
+            // go through literals of clause to see if they have been assigned
             next_clause.clear();
             bool satisfied = false;
+            bool needs_to_be_rupped = false;
             for(int j = 0; j < other_formula.clause_size(i); ++j) {
                 const int lit = other_formula.literal_at_clause_pos(i, j);
                 const int assigned = other_formula.assigned(lit);
                 satisfied = satisfied || (assigned == 1);
+                needs_to_be_rupped = needs_to_be_rupped || (assigned != 0);
                 if(assigned == 0) next_clause.push_back(lit);
             }
-            if(!satisfied) add_clause(next_clause);
+
+            // actually add new (reduced) clause if necessary (not satisfied)
+            bool was_added = false;
+            if(!satisfied) was_added = add_clause(next_clause);
+
+            // below is only needed for proof-logging
+            if(!my_proof) continue;
+
+            // may need to rup the reduced clause now
+            if(was_added && needs_to_be_rupped) {
+                // rup new clause
+                my_proof->rup_clause(next_clause);
+
+                // delete old clause later
+                delete_stack.push_back(i);
+            }
+
+            // if reduced clause was not added for any reason, delete it
+            if(!was_added) delete_stack.push_back(i);
+        }
+
+        // actually delete clauses in proof
+        for(size_t i = 0; i < delete_stack.size(); ++i) {
+            if(my_proof) my_proof->delete_clause(delete_stack[i]);
         }
     }
 
@@ -159,8 +196,10 @@ public:
      * Add a clause to the data structure.
      *
      * @param clause
+     *
+     * @return whether clause was added (true) or not (false)
      */
-    void add_clause(std::vector<int>& clause) {
+    bool add_clause(std::vector<int>& clause) {
         if(!keep_original_order) {
             std::sort(clause.begin(), clause.end());
             clause.erase( unique( clause.begin(), clause.end() ), clause.end() );
@@ -169,7 +208,7 @@ public:
         if(write_db(clause)) {
             [[unlikely]]
             ++removed_duplicate_clauses;
-            return;
+            return false;
         }
 
         const int clause_number = clauses_pt.size();
@@ -187,6 +226,8 @@ public:
             }
             variable_used_list[v].push_back(clause_number);
         }
+
+        return true;
     }
 
     /**
@@ -196,7 +237,7 @@ public:
      * @param automorphism
      * @return
      */
-    bool complete_automorphism(int domain_size, dejavu::groups::automorphism_workspace& automorphism) {
+    virtual bool complete_automorphism(int domain_size, dejavu::groups::automorphism_workspace& automorphism) {
         support_test.initialize(domain_size);
 
         assert(automorphism.nsupp() < domain_size);
@@ -265,7 +306,7 @@ public:
      * @param automorphism supposed automorphism
      * @return whether `automorphism` is indeed an automorphism of the formula represented by the datastructure
      */
-    bool is_automorphism(int domain_size, dejavu::groups::automorphism_workspace& automorphism) {
+    virtual bool is_automorphism(int domain_size, dejavu::groups::automorphism_workspace& automorphism) {
         test_used.initialize(n_clauses());
         support_test.initialize(domain_size);
         need_to_test_clauses.clear();
@@ -366,7 +407,7 @@ public:
         return removed_duplicate_clauses;
     }
 
-    int n_variables() {
+    virtual int n_variables() {
         return number_of_variables;
     }
 
@@ -387,14 +428,10 @@ public:
     }
 
     void dimacs_output_clauses_unlocked(FILE* out) {
-        constexpr int buffer_size = 16;
-        char          buffer[buffer_size];
-
         for(int i = 0; i < n_clauses(); ++i) {
             for (int j = 0; j < clause_size(i); ++j) {
                 const int l = literal_at_clause_pos(i, j);
-                auto const [end_ptr, err] = std::to_chars(buffer, buffer + buffer_size, l);
-                for(char* ptr = buffer; ptr < end_ptr; ++ptr) satsuma_putc(*ptr, out);
+                output_integer(out, l);
                 satsuma_putc(' ', out);
             }
             satsuma_putc('0', out);

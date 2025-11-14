@@ -10,7 +10,7 @@
 #include <string>
 #include <charconv>
 
-void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered_file) {
+static double parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered_file) {
     FILE* file = nullptr;
     if(entered_file) file = fopen(filename.c_str(), "r");
     else file = stdin;
@@ -150,8 +150,10 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
 
     satsuma_funlockfile(file);
     if(!reserved) terminate_with_error("file did not contain an instance");
-    std::clog << "\nc\t read " << (entered_file?ftell(file)/1000000.0:0.0) << "MB ";
+    const double read_mb = entered_file?ftell(file)/1000000.0:0.0;
     fclose(file);
+
+    return read_mb;
 }
 
 #endif //SATSUMA_PARSER_H
