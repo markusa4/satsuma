@@ -47,16 +47,18 @@ satsuma lex --schreier-cuts -f formula.cnf
 ```
 
 ## Proofs 
-In *fixing* mode, the tool can output *SR*, *binary SR*, and *VeriPB proofs. 
+In *fixing* mode, the tool can output *SR*, *binary SR*, and *VeriPB* proofs. 
 In lex-leader mode, the tool can output *VeriPB* proofs.
-Note that in order to obtain a full proof, the proof of *satsuma* then needs to be combined 
-with a proof of the SAT solver.
 
 For example, running 
 ```text 
 satsuma fix hole010.cnf --proof-file proof.out > hole010.break.cnf
 ```
 will output a binary SR proof to the file `proof.out`.
+
+Note that in order to obtain a full proof of unsatisfiability, the proof of *satsuma* then needs to be combined 
+with a proof of the SAT solver. SR proofs can be checked using [dsr-trim](https://github.com/ccodel/dsr-trim), and 
+VeriPB proofs can be checked using [VeriPB](https://veripb.org/).
 
 ## Bugs & Feedback
 If you encounter any bugs or have any feedback to share, please feel free to reach out to me at\
