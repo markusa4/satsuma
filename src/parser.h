@@ -1,5 +1,5 @@
-// Copyright 2025 Markus Anders
-// This file is part of satsuma 1.2.
+// Copyright 2026 Markus Anders
+// This file is part of satsuma 1.3.
 // See LICENSE for extended copyright information.
 
 #ifndef SATSUMA_PARSER_H
@@ -10,7 +10,7 @@
 #include <string>
 #include <charconv>
 
-void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered_file) {
+static double parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered_file) {
     FILE* file = nullptr;
     if(entered_file) file = fopen(filename.c_str(), "r");
     else file = stdin;
@@ -29,7 +29,7 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
 
     int line_num = 0;
 
-    char m;
+    int m;
     char*  buffer_pt;
     int    literal;
     char   buffer[24];
@@ -68,7 +68,7 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
                     while ((m = satsuma_getc(file)) >= '-') [[likely]] *(buffer_pt++) = m;
 
                     // allow to eat additional whitespace
-                    //if(buffer_pos == 0 && (m == ' ' || m == '\t')) continue;
+                    if(buffer_pt == buffer && (m == ' ' || m == '\t')) continue;
 
                     // the pointer arithmetic to get this going is evil, but this function is amazingly fast
                     literal = 0;
@@ -107,14 +107,27 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
                 if (!valid) terminate_with_error("invalid problem definition not matching 'p cnf '");
 
                 buffer_pt = buffer;
-                while ((m = satsuma_getc(file)) >= '-') *(buffer_pt++) = m;
+                // eat whitespace
+                while ((m = satsuma_getc(file)) == ' ' || m == '\t');
+                // read the number
+                while (m >= '-' && m <= '9') {
+                    *(buffer_pt++) = m;
+                    m = satsuma_getc(file);
+                }
+
                 last_conversion = std::from_chars(buffer, buffer_pt, nv).ptr;
                 if(last_conversion == buffer)
                     terminate_with_error("could not parse integer in line " + std::to_string(line_num)
                                                                    + ": '" + std::string(buffer) + "'");
 
                 buffer_pt = buffer;
-                while ((m = satsuma_getc(file)) >= '-') *(buffer_pt++) = m;
+                // eat whitespace
+                while ((m = satsuma_getc(file)) == ' ' || m == '\t');
+                // read the number
+                while (m >= '-' && m <= '9') {
+                    *(buffer_pt++) = m;
+                    m = satsuma_getc(file);
+                }
                 last_conversion = std::from_chars(buffer, buffer_pt, nc).ptr;
                 if(last_conversion == buffer)
                     terminate_with_error("could not parse integer in line " + std::to_string(line_num)
@@ -150,8 +163,10 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
 
     satsuma_funlockfile(file);
     if(!reserved) terminate_with_error("file did not contain an instance");
-    std::clog << "\nc\t read " << (entered_file?ftell(file)/1000000.0:0.0) << "MB ";
+    const double read_mb = entered_file?ftell(file)/1000000.0:0.0;
     fclose(file);
+
+    return read_mb;
 }
 
 #endif //SATSUMA_PARSER_H

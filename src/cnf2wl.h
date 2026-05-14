@@ -1,5 +1,5 @@
-// Copyright 2025 Markus Anders
-// This file is part of satsuma 1.2.
+// Copyright 2026 Markus Anders
+// This file is part of satsuma 1.3.
 // See LICENSE for extended copyright information.
 
 #ifndef SATSUMA_CNF2WL_H
@@ -9,6 +9,7 @@
 #include "utility.h"
 #include "dejavu/ds.h"
 #include <charconv>
+#include "tsl/robin_set.h"
 #include <bitset> 
 
 class cnf2wl {
@@ -23,10 +24,13 @@ class cnf2wl {
     int number_of_variables = 0;
     int units_applied = 0;
     int redundant_removed = 0;
+    int literals_removed  = 0;
     int subsumptions_found = 0;
     bool conflict = false;
     dejavu::ds::markset in_units;
     std::vector<int>    units;
+
+    dejavu::groups::orbit equivalent;
 
     dejavu::ds::markset clause_satisfied;
     dejavu::ds::markset found_literal;
@@ -48,6 +52,7 @@ public:
 
         clause_satisfied.initialize(m);
         in_units.initialize(2*n);
+        equivalent.initialize(2*n);
     }
 
     void mark_literal_uses() {
@@ -147,6 +152,29 @@ public:
         return found_literal.get(sat_to_graph(lit));
     }
 
+    void equivalent_literals() {
+        tsl::robin_set<std::pair<int, int>, pair_hash> binary_db;
+
+        for(int i = 0; i < n_clauses(); ++i) {
+            if(clause_size(i) != 2) continue;
+            const int lit1 = literal_at_clause_pos(i, 0);
+            const int lit2 = literal_at_clause_pos(i, 1);
+            if(binary_db.contains({-lit1,-lit2})) {
+                equivalent.combine_orbits(sat_to_graph(lit1), sat_to_graph(-lit2));
+                equivalent.combine_orbits(sat_to_graph(-lit1), sat_to_graph(lit2));
+            }
+            binary_db.insert({lit1,lit2});
+        }
+
+        for(int i = 0; i < 2*n_variables(); ++i) {
+            if(equivalent.represents_orbit(i) && !equivalent.represents_orbit(graph_negate(i)))
+                std::clog << "error" << std::endl;
+            if(equivalent.represents_orbit(i) && equivalent.orbit_size(i) > 1) {
+                //std::clog << "c equiv_class " << i << " sz=" << equivalent.orbit_size(i) << std::endl;
+            }
+        }
+    }
+
     int satisfied_clauses() {
         int satisfied = 0;
         for(int i = 0; i < n_clauses(); ++i) {
@@ -161,20 +189,38 @@ public:
 
     void add_clause(std::vector<int>& clause) {
         test_redundant.reset();
+        const int clause_pos = clauses.size();
+
+        // check if clause is tautology, and remove duplicate literals in clause
         for(auto& l : clause) {
             const int graph_l  = sat_to_graph(l);
             const int graph_nl = sat_to_graph(-l);
-            if(test_redundant.get(graph_l)) continue;
+
+            // literal was already in clause -- so skip it
+            if(test_redundant.get(graph_l)) {
+                ++literals_removed;
+                continue;
+            }
+
+            // clause is a tautology
             if(test_redundant.get(graph_nl)) {
                 ++redundant_removed;
+
+                // clause not needed -- reset clauses array to size before adding
+                // the new literals of clause
+                clauses.resize(clause_pos);
                 return;
             }
+
+            // literal is fresh, so add it to the clause and mark it
+            clauses.push_back(l);
             test_redundant.set(graph_l);
         }
 
+        // clause was not a tautology, so we actually add it
         const int clause_number = clauses_pt.size();
-        clauses_pt.emplace_back(clauses.size(), clauses.size() + clause.size());
-        clauses.insert(clauses.end(), clause.begin(), clause.end());
+        clauses_pt.emplace_back(clause_pos, clauses.size());
+
         for(auto& l : clause) {
             assert(l != 0);
             [[maybe_unused]] const int v = abs(l) - 1;
@@ -237,6 +283,10 @@ public:
         return assignment[sat_to_graph(literal)];
     }
 
+    int representative(int literal) {
+        return graph_to_sat(equivalent.find_orbit(sat_to_graph(literal)));
+    }
+
 
     void update_satisfied(int clause_number) {
         clause_satisfied.set(clause_number);
@@ -253,7 +303,8 @@ public:
     }
 
     void initialize_watches(int clause_number) {
-        if(clause_size(clause_number) == 1) {
+        if(clause_size(clause_number) == 0) return;
+        else if(clause_size(clause_number) == 1) {
             queue_units(literal_at_clause_pos(clause_number, 0), clause_number);
         } else {
             add_watch(literal_at_clause_pos(clause_number, 0), clause_number);
@@ -332,6 +383,10 @@ public:
         return redundant_removed;
     }
 
+    int n_redundant_literals() {
+        return literals_removed;
+    }
+
     int n_variables() {
         return number_of_variables;
     }
@@ -356,15 +411,11 @@ public:
         }
     }
 
-    void dimacs_output_clauses(FILE* out) {
-        constexpr int buffer_size = 16;
-        char          buffer[buffer_size];
-
+    void dimacs_output_clauses_unlocked(FILE* out) {
         for(int i = 0; i < n_clauses(); ++i) {
             for (int j = 0; j < clause_size(i); ++j) {
                 const int l = literal_at_clause_pos(i, j);
-                std::to_chars(buffer, buffer + buffer_size, l);
-                for(int j = 0; buffer[j] != 0; ++j) satsuma_putc(buffer[j], out);
+                output_integer(out, l);
                 satsuma_putc(' ', out);
             }
             satsuma_putc('0', out);
@@ -392,6 +443,7 @@ public:
         number_of_variables = 0;
         units_applied = 0;
         redundant_removed = 0;
+        literals_removed  = 0;
         in_units.initialize(0);
 
         clause_satisfied.initialize(0);
