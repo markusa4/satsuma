@@ -11,8 +11,8 @@ but this dependency should be automatically met when running *cmake*.
 
 ## Usage
 Satsuma supports *two distinct approaches* to symmetry breaking: 
-1. Fixing and 
-2. Lex-Leader constraints. 
+1. **Fixing** with `satsuma fix`
+2. **Lex-Leader** constraints with `satsuma lex`. 
 
 Suppose we have a CNF SAT instance `hole010.cnf`, for which we want to handle symmetry before solving.
 An example use of  *satsuma* with the SAT solver *cryptominisat* may look as follows. 
