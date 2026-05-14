@@ -9,6 +9,24 @@ make satsuma
 This produces a binary *satsuma*. The project depends on [dejavu](https://www.automorphisms.org), 
 but this dependency should be automatically met when running *cmake*.
 
+## Optional Cliquer Support
+
+For additional heuristics, *satsuma* can optionally be built with [Cliquer](https://users.aalto.fi/~pat/cliquer.html) support.
+
+To enable this, place a copy of Cliquer in
+
+```text
+src/cliquer/
+```
+
+Then configure the project with Cliquer support enabled:
+```text
+cmake . -DCLIQUES=ON
+make satsuma
+```
+
+This compiles Cliquer into satsuma and enables corresponding heuristics.
+
 ## Usage
 Satsuma supports *two distinct approaches* to symmetry breaking: 
 1. Fixing and 

@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.5)
 project(satsuma C CXX)
 
-option(CLIQUES "Build with clique support" ON)
+option(CLIQUES "Build with clique support" OFF)
 
 include(ExternalProject)
 
