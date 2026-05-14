@@ -1,5 +1,5 @@
 // Copyright 2026 Markus Anders
-// This file is part of satsuma 1.3.
+// This file is part of satsuma 1.4.
 // See LICENSE for extended copyright information.
 
 #ifndef SATSUMA_PREDICATE_H
