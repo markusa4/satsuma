@@ -6,7 +6,7 @@
 #define SATSUMA_SATSUMA_H
 
 #define SATSUMA_VERSION_MAJOR 1
-#define SATSUMA_VERSION_MINOR 3
+#define SATSUMA_VERSION_MINOR 4
 
 #include "dejavu/ds.h"
 #include "dejavu/dejavu.h"
