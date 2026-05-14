@@ -52,6 +52,12 @@ In lex-leader mode, the tool can output *VeriPB* proofs.
 Note that in order to obtain a full proof, the proof of *satsuma* then needs to be combined 
 with a proof of the SAT solver.
 
+For example, running 
+```text 
+satsuma fix hole010.cnf --proof-file proof.out > hole010.break.cnf
+```
+will output a binary SR proof to the file `proof.out`.
+
 ## Bugs & Feedback
 If you encounter any bugs or have any feedback to share, please feel free to reach out to me at\
 `anders (at) cs.uni-kl.de`.
@@ -71,10 +77,10 @@ by Markus Anders
 
 The symmetry fixing algorithm is described in the following papers.
 
-"Simplify, Break, Order, Repeat" at SAT '26
+"Simplify, Break, Order, Repeat" at SAT '26\
 by Markus Anders, Cayden Codel, Marijn J.H. Heule
 
-"Orbitopal Fixing in SAT" at TACAS '26 ([paper](https://arxiv.org/abs/2601.16855), [bibtex](https://dblp.uni-trier.de/rec/conf/tacas/AndersCH26.html?view=bibtex))
+"Orbitopal Fixing in SAT" at TACAS '26 ([paper](https://arxiv.org/abs/2601.16855), [bibtex](https://dblp.uni-trier.de/rec/conf/tacas/AndersCH26.html?view=bibtex))\
 by Markus Anders, Cayden Codel, Marijn J.H. Heule
 
 ## Related Software
@@ -86,7 +92,7 @@ Some of the implemented procedures are descended from
 
 ## Why “satsuma”?
 
-Because we thought it was fun. We did, however, prepare a haphazard explanation in case anyone asked: tools like BreakID and Shatter sound as if they violently destroy symmetries, 
+Because we thought it was fun. We did, however, prepare a haphazard explanation in case anyone asked: tools like *BreakID* and *Shatter* sound as if they violently destroy symmetries, 
 while *satsuma* peels them apart more carefully, one piece at a time — like eating a satsuma.
 
 ## License
