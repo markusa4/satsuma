@@ -27,8 +27,6 @@ void print_help() {
     std::clog << "'fix' simplifies the CNF using symmetry" << std::endl;
     std::clog << "'lex' computes lex-leader symmetry breaking constraints" << std::endl;
     std::clog << "\n";
-    std::clog << "FILE is expected to be in DIMACS format (may also be piped)." << std::endl;
-    std::clog << "\n";
     std::clog << "Options:" << std::endl;
     std::clog << "\n";
     std::clog << "   "  << std::left << std::setw(23) <<
@@ -55,17 +53,8 @@ void print_help() {
         "Uses the graph in DIMACS format as the model graph" << std::endl;
     std::clog << "\n";
     std::clog << "   "  << std::left << std::setw(23) <<
-        "--break-depth [N]" << std::setw(16) <<
-        "Limits generic breaking constraints to depth n" << std::endl;
-    std::clog << "   "  << std::left << std::setw(23) <<
-        "--preprocess-cnf" << std::setw(16) <<
-        "Preprocess before symmetry breaking" << std::endl;
-    std::clog << "   "  << std::left << std::setw(23) <<
-        "--schreier-cuts" << std::setw(16) <<
-        "Use the Schreier cut heuristic" << std::endl;
-    std::clog << "   "  << std::left << std::setw(23) <<
-        "--no-opt" << std::setw(16) <<
-        "Don't optimize generators" << std::endl;
+        "--opt" << std::setw(16) <<
+        "Optimize generators" << std::endl;
     std::clog << "   "  << std::left << std::setw(23) <<
         "--opt-passes [N]" << std::setw(16) <<
         "Passes used in support optimization " << std::endl;
@@ -78,6 +67,16 @@ void print_help() {
     std::clog << "   "  << std::left << std::setw(23) <<
         "--opt-reopt" << std::setw(16) <<
         "Optimizes generators twice" << std::endl;
+    std::clog << "\n";
+    std::clog << "   "  << std::left << std::setw(23) <<
+        "--break-depth [N]" << std::setw(16) <<
+        "Limits generic breaking constraints to depth n (lex)" << std::endl;
+    std::clog << "   "  << std::left << std::setw(23) <<
+        "--preprocess-cnf" << std::setw(16) <<
+        "Preprocess before symmetry breaking (lex)" << std::endl;
+    std::clog << "   "  << std::left << std::setw(23) <<
+        "--schreier-cuts" << std::setw(16) <<
+        "Use the Schreier cut heuristic (lex)" << std::endl;
 }
 
 
@@ -208,6 +207,7 @@ int commandline_mode(int argc, char **argv) {
             std::clog << "\t »SAT Preprocessors and Symmetry« (SAT '22)\n\t  by Markus Anders" << std::endl;
 
             std::clog << "\nThe fixing algorithm and SR proof-logging is described in:\n" << std::endl;
+            std::clog << "\t »Simplify, Order, Break, Repeat« (SAT '26)\n\t  by Markus Anders, Cayden Codel, Marijn J.H. Heule\n" << std::endl;
             std::clog << "\t »Orbitopal Fixing in SAT« (TACAS '26)\n\t  by Markus Anders, Cayden Codel, Marijn J.H. Heule" << std::endl;
 
             std::clog << "\nVeriPB proof-logging is described in:\n" << std::endl;
