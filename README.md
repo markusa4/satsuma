@@ -33,6 +33,9 @@ Each of these passes `hole010.cnf` to satsuma, which will write the resulting fo
 The formula `hole010.cnf` is satisfiable, if and only if `hole010.break.cnf` is satisfiable.
 We then pass `hole010.break.cnf` to a SAT solver of choice, in the case above to cryptominisat.
 
+In some modes, the tool *may remove variables from the formula*. The resulting formula remains equisatisfiable with the original one, 
+but satisfying assignments for the reduced formula may not directly assign all variables of the original formula.
+If you want every satisfying assignment of the resulting formula to also be a valid satisfying assignment of the original formula, use `--add-reduced-as-unit`.
 Additional options are available to. Run `satsuma -h` to see a full list. 
 
 The default settings aim to provide a good balance between overhead and effectiveness. 
