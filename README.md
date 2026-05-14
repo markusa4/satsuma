@@ -40,10 +40,10 @@ However, the tool can be configured in many ways to attempt weaker, stornger, or
 Which parameters work best will depend on the instance, mode, and SAT solver used. 
 Here are some settings to try: 
 ```text 
-satsuma lex --opt -f formula.cnf
-satsuma lex --opt-reopt -f formula.cnf
-satsuma lex --opt-reopt --opt-conjugations 5000 -f formula.cnf  // (or >5000)
-satsuma lex --schreier-cuts -f formula.cnf
+satsuma lex --opt formula.cnf
+satsuma lex --opt-reopt formula.cnf
+satsuma lex --opt-reopt --opt-conjugations 5000 formula.cnf  // (or >5000)
+satsuma lex --schreier-cuts formula.cnf
 ```
 ## Optional Cliquer Support
 
