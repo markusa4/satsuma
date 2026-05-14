@@ -1,16 +1,15 @@
-// Copyright 2025 Markus Anders
-// This file is part of satsuma 1.2.
+// Copyright 2026 Markus Anders
+// This file is part of satsuma 1.4.
 // See LICENSE for extended copyright information.
 
-#ifndef SATSUMA_PARSER_H
-#define SATSUMA_PARSER_H
+#ifndef SATSUMA_KNF_PARSER_H
+#define SATSUMA_KNF_PARSER_H
 #include "utility.h"
-#include "cnf.h"
-#include "cnf2wl.h"
+#include "pbf.h"
 #include <string>
 #include <charconv>
 
-void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered_file) {
+static double parse_knf_to_pb_db(std::string& filename, pbf& formula, bool entered_file) {
     FILE* file = nullptr;
     if(entered_file) file = fopen(filename.c_str(), "r");
     else file = stdin;
@@ -34,6 +33,8 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
     int    literal;
     char   buffer[24];
     std::vector<int> construct_clause;
+    std::vector<std::string> coeffs;
+    std::string rhs = "";
 
     while ((m = satsuma_getc(file)) != EOF) {
         [[likely]]
@@ -42,6 +43,7 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
         switch (m) {
             // a clause
             [[likely]]
+            case 'k':
             case '-':
             case '0':
             case '1':
@@ -58,6 +60,11 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
                 if (!reserved) terminate_with_error("formula must begin with 'p' line");
                 construct_clause.clear();
 
+                // if cardinality, skip whitespace and go to first literal
+                const bool cardinality = m == 'k';
+                if(cardinality) while((m = satsuma_getc(file)) == ' ');
+                bool currently_reading_cardinality = cardinality;
+
                 // we've already read the first digit of the first literal
                 buffer_pt = buffer+1;
                 buffer[0] = m;
@@ -68,23 +75,34 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
                     while ((m = satsuma_getc(file)) >= '-') [[likely]] *(buffer_pt++) = m;
 
                     // allow to eat additional whitespace
-                    //if(buffer_pos == 0 && (m == ' ' || m == '\t')) continue;
+                    if(buffer_pt == buffer && (m == ' ' || m == '\t')) {
+                        buffer_pt = buffer;
+                        continue;
+                    }
 
-                    // the pointer arithmetic to get this going is evil, but this function is amazingly fast
-                    literal = 0;
-                    last_conversion = std::from_chars(buffer, buffer_pt, literal).ptr;
-                    if (literal == 0) break; // either the clause ended, or an error in the conversion occurred
-                    construct_clause.push_back(literal); // add literal to clause we're constructing
+                    if(currently_reading_cardinality) { 
+                        rhs.clear();
+                        for(char* it = buffer; it < buffer_pt; ++it) rhs.push_back(*it);
+                        currently_reading_cardinality = false;
+                    } else {
+                        // the pointer arithmetic to get this going is evil, but this function is amazingly fast
+                        literal = 0;
+                        last_conversion = std::from_chars(buffer, buffer_pt, literal).ptr;
+                        if (literal == 0) break; // either the clause ended, or an error in the conversion occurred
+                        construct_clause.push_back(literal); // add literal to clause we're constructing
+                    }
                     buffer_pt = buffer;
                 }
 
                 // check if error in conversion occurred
                 if(last_conversion == buffer)
                     terminate_with_error("invalid conversion occured in line " +
-                                          std::to_string(line_num) + ": '" + buffer +"'");
+                                          std::to_string(line_num) + ": '" + buffer +"', conversion: " + std::to_string(literal));
 
                 // add the clause we've constructed
-                formula.add_clause(construct_clause);
+                coeffs.resize(construct_clause.size());
+
+                formula.add_constraint(construct_clause, coeffs, cardinality?rhs:"", cardinality?EQ:LEQ);
                 break;
             }
 
@@ -94,8 +112,8 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
                 // eat 5 characters
                 m = satsuma_getc(file); // == ' ' // should not be unsafe since getc will keep returning EOF once
                 bool valid = (m == ' ' || m == '\t'); // reached
-                m = satsuma_getc(file); // == 'c'
-                valid = valid && (m == 'c' || m == 'C');
+                m = satsuma_getc(file); // == 'k'
+                valid = valid && (m == 'k' || m == 'K');
                 m = satsuma_getc(file); // == 'n'
                 valid = valid && (m == 'n' || m == 'N');
                 m = satsuma_getc(file); // == 'f'
@@ -104,7 +122,7 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
                 valid = valid && (m == ' ' || m == '\t');
 
                 // could not match up "p cnf "
-                if (!valid) terminate_with_error("invalid problem definition not matching 'p cnf '");
+                if (!valid) terminate_with_error("invalid problem definition not matching 'p knf '");
 
                 buffer_pt = buffer;
                 while ((m = satsuma_getc(file)) >= '-') *(buffer_pt++) = m;
@@ -121,7 +139,7 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
                                          + ": '" + std::string(buffer) + "'");
 
                 reserved = true;
-                formula.reserve(nv, nc);
+                formula.reserve(nv, nc, 0, 0);
                 break;
             }
 
@@ -150,8 +168,10 @@ void parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered
 
     satsuma_funlockfile(file);
     if(!reserved) terminate_with_error("file did not contain an instance");
-    std::clog << "\nc\t read " << (entered_file?ftell(file)/1000000.0:0.0) << "MB ";
+    const double read_mb = entered_file?ftell(file)/1000000.0:0.0;
     fclose(file);
+
+    return read_mb;
 }
 
-#endif //SATSUMA_PARSER_H
+#endif //SATSUMA_KNF_PARSER_H

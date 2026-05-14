@@ -1,0 +1,172 @@
+// Copyright 2026 Markus Anders
+// This file is part of satsuma 1.4.
+// See LICENSE for extended copyright information.
+
+#ifndef SATSUMA_PARSER_H
+#define SATSUMA_PARSER_H
+#include "utility.h"
+#include "cnf.h"
+#include "cnf2wl.h"
+#include <string>
+#include <charconv>
+
+static double parse_dimacs_to_cnf2wl(std::string& filename, cnf2wl& formula, bool entered_file) {
+    FILE* file = nullptr;
+    if(entered_file) file = fopen(filename.c_str(), "r");
+    else file = stdin;
+    if(!file) terminate_with_error("could not open file '" + filename + "'");
+
+    constexpr int line_buf_sz = 1024*8;
+    char line_buffer[line_buf_sz];
+    setvbuf(file, line_buffer, _IOFBF, line_buf_sz);
+    satsuma_flockfile(file);
+
+    bool reserved = false;
+    const char* last_conversion = nullptr;
+
+    int nv = 0;
+    int nc = 0;
+
+    int line_num = 0;
+
+    int m;
+    char*  buffer_pt;
+    int    literal;
+    char   buffer[24];
+    std::vector<int> construct_clause;
+
+    while ((m = satsuma_getc(file)) != EOF) {
+        [[likely]]
+        ++line_num;
+        //const char m = line[0];
+        switch (m) {
+            // a clause
+            [[likely]]
+            case '-':
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+            {
+                // not possible to continue without allocating the memory first
+                if (!reserved) terminate_with_error("formula must begin with 'p' line");
+                construct_clause.clear();
+
+                // we've already read the first digit of the first literal
+                buffer_pt = buffer+1;
+                buffer[0] = m;
+                for(;;) {
+                    [[likely]]
+
+                    // read next literal digit-by-digit
+                    while ((m = satsuma_getc(file)) >= '-') [[likely]] *(buffer_pt++) = m;
+
+                    // allow to eat additional whitespace
+                    if(buffer_pt == buffer && (m == ' ' || m == '\t')) continue;
+
+                    // the pointer arithmetic to get this going is evil, but this function is amazingly fast
+                    literal = 0;
+                    last_conversion = std::from_chars(buffer, buffer_pt, literal).ptr;
+                    if (literal == 0) break; // either the clause ended, or an error in the conversion occurred
+                    construct_clause.push_back(literal); // add literal to clause we're constructing
+                    buffer_pt = buffer;
+                }
+
+                // check if error in conversion occurred
+                if(last_conversion == buffer)
+                    terminate_with_error("invalid conversion occured in line " +
+                                          std::to_string(line_num) + ": '" + buffer +"'");
+
+                // add the clause we've constructed
+                formula.add_clause(construct_clause);
+                break;
+            }
+
+            // the problem definition
+            [[unlikely]]
+            case 'p': {
+                // eat 5 characters
+                m = satsuma_getc(file); // == ' ' // should not be unsafe since getc will keep returning EOF once
+                bool valid = (m == ' ' || m == '\t'); // reached
+                m = satsuma_getc(file); // == 'c'
+                valid = valid && (m == 'c' || m == 'C');
+                m = satsuma_getc(file); // == 'n'
+                valid = valid && (m == 'n' || m == 'N');
+                m = satsuma_getc(file); // == 'f'
+                valid = valid && (m == 'f' || m == 'F');
+                m = satsuma_getc(file);
+                valid = valid && (m == ' ' || m == '\t');
+
+                // could not match up "p cnf "
+                if (!valid) terminate_with_error("invalid problem definition not matching 'p cnf '");
+
+                buffer_pt = buffer;
+                // eat whitespace
+                while ((m = satsuma_getc(file)) == ' ' || m == '\t');
+                // read the number
+                while (m >= '-' && m <= '9') {
+                    *(buffer_pt++) = m;
+                    m = satsuma_getc(file);
+                }
+
+                last_conversion = std::from_chars(buffer, buffer_pt, nv).ptr;
+                if(last_conversion == buffer)
+                    terminate_with_error("could not parse integer in line " + std::to_string(line_num)
+                                                                   + ": '" + std::string(buffer) + "'");
+
+                buffer_pt = buffer;
+                // eat whitespace
+                while ((m = satsuma_getc(file)) == ' ' || m == '\t');
+                // read the number
+                while (m >= '-' && m <= '9') {
+                    *(buffer_pt++) = m;
+                    m = satsuma_getc(file);
+                }
+                last_conversion = std::from_chars(buffer, buffer_pt, nc).ptr;
+                if(last_conversion == buffer)
+                    terminate_with_error("could not parse integer in line " + std::to_string(line_num)
+                                         + ": '" + std::string(buffer) + "'");
+
+                reserved = true;
+                formula.reserve(nv, nc);
+                break;
+            }
+
+            [[unlikely]]
+            case 'c': {
+                while ((m = satsuma_getc(file)) != '\n' && m != '\r' && m != EOF);
+                break;
+            }
+
+                // just eat whitespaces, carriage returns, and newlines
+            [[unlikely]]
+            case '\t':
+            case ' ':
+            case '\r':
+            case '\n':
+                break;
+
+                // can not recognize, let's abort
+            [[unlikely]]
+            default: {
+                terminate_with_error("can not parse line " + std::to_string(line_num));
+                break;
+            }
+        }
+    }
+
+    satsuma_funlockfile(file);
+    if(!reserved) terminate_with_error("file did not contain an instance");
+    const double read_mb = entered_file?ftell(file)/1000000.0:0.0;
+    fclose(file);
+
+    return read_mb;
+}
+
+#endif //SATSUMA_PARSER_H

@@ -1,5 +1,5 @@
-// Copyright 2025 Markus Anders
-// This file is part of satsuma 1.2.
+// Copyright 2026 Markus Anders
+// This file is part of satsuma 1.4.
 // See LICENSE for extended copyright information.
 
 #include "dejavu/dejavu.h"
@@ -9,10 +9,16 @@
 #include <random>
 #include <cstring>
 #include <chrono>
+#include <charconv>
 #include <iomanip>
 
 #ifndef SATSUMA_UTILITY_H
 #define SATSUMA_UTILITY_H
+
+static void terminate_with_error(std::string error_msg) {
+    std::cerr << "c \nc " << error_msg << std::endl;
+    exit(1);
+}
 
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 // should be POSIX, where "_unlocked" is available
@@ -28,6 +34,18 @@
 #define satsuma_funlockfile(f) {};
 #endif
 
+inline void output_integer(FILE* out, const int l) {
+    static constexpr int buffer_size = 16;
+    static char          buffer[buffer_size];
+
+    auto const [end_ptr, err] = std::to_chars(buffer, buffer + buffer_size, l);
+    if(err == std::errc::value_too_large) terminate_with_error("buffer too small");
+    for(char* ptr = buffer; ptr < end_ptr; ++ptr) satsuma_putc(*ptr, out);
+}
+
+inline void output_string(FILE* out, const std::string& str) {
+    for(const char& c : str) satsuma_putc(c, out);
+}
 
 /**
 * Maps a SAT literal to it's corresponding graph vertex
@@ -84,50 +102,20 @@ public:
     }
 };
 
-/**
- * \brief Prints information to the console.
- *
- * Contains additional facilities to measure elapsed time in-between prints.
- */
-class profiler {
-    std::vector<std::pair<std::string, double>> results;
-public:
-    void add_result(std::string name, double result) {
-        results.push_back({name, result});
-    }
-    void print_results(std::ostream& print_to, const double independent_total = -1) {
+enum profiler_token { DETECT_GENERIC, 
+                      DETECT_SPECIAL, 
+                      PREPROCESS, 
+                      PARSE,
+                      HYPERGRAPH,
+                      REFINE,
+                      SCHREIER,
+                      OPTIMIZE,
+                      ORDER,
+                      BREAK,
+                      DEDUPLICATE,
+                      OUTPUT,
+                      OTHER};
 
-        double total = 0;
-        for (auto const &[name, time]: results) {
-            total += time;
-        }
-        if(independent_total > 0 && independent_total > total) {
-            const double t_other = independent_total - total;
-            add_result("other", t_other);
-            total = independent_total;
-        }
-
-        if(total == 0) total += 0.001;
-
-        std::sort(results.begin(), results.end(), [](auto &left, auto &right) {
-            return left.second > right.second;
-        });
-
-        print_to<< std::setprecision(2) << std::fixed;
-        for(auto const& [name, time] : results) {
-            print_to << "c " << std::right << std::setw(22) << time << "ms" << std::right << std::setw(6) << (time/total)*100 << std::setw(1) << "%"  << std::left << " " << name <<  "\n";
-        }
-        print_to << "c         ───────────────────────────────────────────────\n";
-        print_to << "c " << std::right << std::setw(22) << total << "ms" << std::right << std::setw(6) << 100 << std::setw(1) << "%"  << std::left << " " << "total" <<  "\n";
-
-
-    }
-};
-
-static void terminate_with_error(std::string error_msg) {
-    std::cerr << "c \nc " << error_msg << std::endl;
-    exit(1);
-}
 
 [[maybe_unused]] static void print_automorphism(int n, const int *p, int nsupp, const int *supp) {
     static dejavu::markset test_set;
@@ -182,6 +170,24 @@ struct any_hash
     }
 };
 
+struct any_hash2
+{
+    long operator()(const std::vector<std::pair<int, int>>
+                    &myVector) const
+    {
+        long answer = myVector.size();
+
+        for (std::pair<int, int> i : myVector)
+        {
+            answer ^= hash32shift(i.first) + 0x9e3779b9 +
+                      (answer << 6) + (answer >> 2);
+            answer ^= hash32shift(i.second) + 0x9e3779b9 +
+                      (answer << 6) + (answer >> 2);
+        }
+        return answer;
+    }
+};
+
 struct triple_hash {
     inline std::size_t operator()(const std::tuple<int,int,int> & v) const {
         return 48*std::get<0>(v)+24*hash32shift(std::get<1>(v))+hash32shift(std::get<2>(v));
@@ -193,5 +199,22 @@ struct pair_hash {
         return v.first*31+hash32shift(v.second);
     }
 };
+
+class empty_buffer : public std::streambuf {
+protected:
+    int overflow(int c) override {
+        return c; 
+    }
+};
+
+class empty_stream : public std::ostream {
+public:
+    empty_stream() : std::ostream(&buffer) {}
+private:
+    empty_buffer buffer;
+};
+
+enum read_type  {CNF, OPB, KNF};
+enum proof_type {VERIPB, SR, BINARY_SR};
 
 #endif //SATSUMA_UTILITY_H
