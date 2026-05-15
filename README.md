@@ -99,7 +99,7 @@ by Markus Anders
 
 The symmetry fixing algorithm is described in the following papers.
 
-"Simplify, Break, Order, Repeat" at SAT '26\
+"Simplify, Order, Break, Repeat" at SAT '26\
 by Markus Anders, Cayden Codel, Marijn J.H. Heule
 
 "Orbitopal Fixing in SAT" at TACAS '26 ([paper](https://arxiv.org/abs/2601.16855), [bibtex](https://dblp.uni-trier.de/rec/conf/tacas/AndersCH26.html?view=bibtex))\
