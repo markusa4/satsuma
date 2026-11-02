@@ -2399,7 +2399,7 @@ public:
         //    }
         //}
 
-        dejavu::ds::markset touched_orig_color(domain_size);
+        dejavu::ds::markset touched_orig_color(domain_size_graph);
         touched_orig_color.reset();
 
 
@@ -2506,7 +2506,7 @@ public:
             const int v1 = arr[i];
 
             const int v1_lab_pos = col.vertex_to_lab[v1];
-            const int v1_new_lab_pos = new_col;
+            const int v1_new_lab_pos = new_col + i;
             const int v1_vertex_at_lab = col.lab[v1_new_lab_pos];
 
             col.lab[v1_lab_pos] = v1_vertex_at_lab;
@@ -2602,7 +2602,7 @@ public:
         }
 
         dejavu::ds::markset orbit_test(domain_size);
-        dejavu::ds::markset touched_orig_color(domain_size);
+        dejavu::ds::markset touched_orig_color(domain_size_graph);
         std::vector<std::vector<int>> potential_blocks;
 
         dejavu::ds::markset rows_are_unique(domain_size);
@@ -2861,9 +2861,9 @@ public:
             }
         } else if(recurse_order == nullptr) {
             // stabilize blocks
-            dejavu::ds::workspace scratch(domain_size);
-            dejavu::ds::work_set_int color_counter(domain_size);
-            dejavu::ds::worklist color_list(domain_size);
+            dejavu::ds::workspace scratch(domain_size_graph);
+            dejavu::ds::work_set_int color_counter(domain_size_graph);
+            dejavu::ds::worklist color_list(domain_size_graph);
 
             for (int j = 0; j < static_cast<int>(orbit.size()); ++j) {
                 color_counter.reset();
