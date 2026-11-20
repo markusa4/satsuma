@@ -1277,6 +1277,14 @@ public:
             }
         }
 
+        // explicitly delete binary clauses -- otherwhise will cause issues if the above unit clause is deleted
+        // after simplification
+        for(int i = 0; i < cl_sz; ++i) {
+            const int next_l = formula.literal_at_clause_pos(applicable_clause, i);
+            if(next_l == repr_l) continue;
+            sbp.delete_binary_clause_sr_log(repr_l, next_l);
+        }
+
         return fixings;
     }
 

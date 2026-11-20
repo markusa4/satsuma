@@ -115,7 +115,7 @@ public:
                 for(int j = 0; j < other_formula.clause_size(delete_stack[i]); ++j) {
                         remove_clause.push_back(other_formula.literal_at_clause_pos(delete_stack[i], j));
                 }
-                my_proof->delete_clause(delete_stack[i], remove_clause);
+                my_proof->delete_clause(-1, remove_clause);
             }
         }
     }

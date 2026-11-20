@@ -563,6 +563,12 @@ public:
         if(my_proof) my_proof->binary_clause(orbit_repr_literal, -other_literal, reason);
     }
 
+    void delete_binary_clause_sr_log(int orbit_repr_literal, int other_literal) {
+        if(!my_proof) return;
+        std::vector<int> clause = {orbit_repr_literal, -other_literal};
+        my_proof->delete_clause(-1, clause);
+    }
+
     /**
      * Get the total support of automorphisms used to make the predicate.
      *

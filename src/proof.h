@@ -1437,7 +1437,17 @@ class proof {
 
     void delete_clause(const int64_t id, std::vector<int>& clause) {
         if(proof_format == VERIPB) {
-            proof_file << "delc " << id + 1 << ";\n";
+            if(id >= 0) {
+                proof_file << "delc " << id + 1 << ";\n";
+            } else {
+                proof_file << "del spec ";
+                for (int lit : clause) {
+                    proof_file << "1 ";
+                    if (lit < 0) proof_file << "~";
+                    proof_file << "x" << std::abs(lit) << " ";
+                }
+                proof_file << ">= 1 ;\n";
+            }
         } else if (is_sr_proof_format()) {
             dimacs_delete_line_start();
             dimacs_clause(clause);

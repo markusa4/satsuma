@@ -51,6 +51,7 @@ namespace satsuma {
         long full_skip_limit            = -1; //< hard limit for component size 
         long schreier_domain_limit      = 50000;   //< hard limit for Schreier domains
         uint64_t total_cost_limit = 20000000000;   //< hard limit for Schreier domains
+        //uint64_t total_cost_limit = 90000000000;   //< hard limit for Schreier domains
 
         // limits for special detection
         int row_orbit_limit        = 64;
@@ -668,11 +669,10 @@ namespace satsuma {
 
             std::vector<int> proof_fix_literals;
 
+            if(my_proof) my_proof->set_proof_dense_crossover(proof_dense_crossover);
+            if(my_proof) my_proof->set_pol_logging(proof_pol_log);
+            if(my_proof) my_proof->header(formula.n_clauses());
             while(true) {
-                if(my_proof) my_proof->set_proof_dense_crossover(proof_dense_crossover);
-                if(my_proof) my_proof->set_pol_logging(proof_pol_log);
-                if(my_proof) my_proof->header(formula.n_clauses());
-
                 // apply rudimentary, symmetry-preserving CNF preprocessing
                 if(preprocess_cnf_unit || preprocess_cnf_pure) {
                     if(track) track->force_print();
