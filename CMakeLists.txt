@@ -13,7 +13,8 @@ set(DEJAVU_LOCATION ${CMAKE_SOURCE_DIR}/src/dejavu)
 include(FetchContent)
 FetchContent_Declare(dejavu
         GIT_REPOSITORY "https://github.com/markusa4/dejavu.git"
-        GIT_TAG "origin/main"
+        # pinned: ganak --symm compiles against these headers
+        GIT_TAG "f9844859d9f3be5558a8f3957029236a7d26ff65"
         SOURCE_DIR ${DEJAVU_LOCATION})
 FetchContent_MakeAvailable(dejavu)
 
