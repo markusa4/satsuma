@@ -26,6 +26,11 @@ static void reorder_columns(abstract_formula& formula, std::vector<std::vector<i
  * Constructs and analyzes a group from a CNF representation of a SAT instance.
  */
 class symmetries {
+public:
+    // If set, every detected row (and row-column) action is appended here as a
+    // matrix of SAT literals: rows[i][k], swapping two rows is the action
+    std::vector<std::vector<std::vector<int>>>* row_sink = nullptr;
+private:
     dejavu::solver d;
     dejavu::ir::refinement ref;
 
@@ -2474,6 +2479,17 @@ public:
 
         if(!potential_row_column_symmetry) return false;
 
+        if(row_sink) {
+            const int nk = static_cast<int>(column.size()), nj = static_cast<int>(row.size());
+            std::vector<std::vector<int>> a(nj), b(nk);
+            for (int k = 0; k < nk; ++k) for (int j = 0; j < nj; ++j) {
+                a[j].push_back(graph_to_sat(matrix_model[k][j]));
+                b[k].push_back(graph_to_sat(matrix_model[k][j]));
+            }
+            row_sink->push_back(std::move(a));
+            row_sink->push_back(std::move(b));
+        }
+
         // matrix is confirmed to be row-column symmetry, now we write a double-lex predicate
         (*log) << "c\t  found row-column " << row.size() << "x" << column.size() << std::endl;
         if(track) track->add_to_metric(satsuma::ROW_COLUMN, 1);
@@ -2750,6 +2766,13 @@ public:
         }
 
         if(!potential_row_symmetry) return;
+
+        if(row_sink) {
+            std::vector<std::vector<int>> m(orbit.size());
+            for (int j = 0; j < static_cast<int>(orbit.size()); ++j)
+                for (int v : orbit_row[j]) m[j].push_back(graph_to_sat(v));
+            row_sink->push_back(std::move(m));
+        }
 
         // matrix is confirmed to be row symmetry
         (*log) << "c \t found row " << orbit.size() << "x" << orbit_row[0].size()
